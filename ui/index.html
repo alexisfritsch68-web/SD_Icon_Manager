@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SD Icon Manager</title>
+    <!-- Police MUI (Inter) et Material Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+    <!-- SIDEBAR (Menu latéral) -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="material-symbols-outlined logo-icon">joystick</span>
+            <h1>SD Manager</h1>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active">
+                <span class="material-symbols-outlined">photo_library</span>
+                <span>Iconothèque</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="material-symbols-outlined">inventory_2</span>
+                <span>Mes Packs</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="material-symbols-outlined">cloud_download</span>
+                <span>Importer</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- CONTENU PRINCIPAL -->
+    <main class="main-content">
+        <!-- APP BAR (Barre du haut) -->
+        <header class="app-bar">
+            <div class="import-zone">
+    <input id="url-input" type="text" placeholder="Coller un lien SGDB..." class="mui-input" />
+    <button id="download-btn" class="mui-btn primary">
+        <span class="material-symbols-outlined btn-icon">download</span>
+        Télécharger
+    </button>
+    <button id="steamgriddb-api-key-btn" class="mui-btn outlined">
+        <span class="material-symbols-outlined btn-icon">key</span>
+        Clé SGDB
+    </button>
+    <button id="local-files-btn" class="mui-btn outlined">
+        <span class="material-symbols-outlined btn-icon">add</span>
+        Fichiers locaux
+    </button>
+    <input id="file-input" type="file" accept="image/*" multiple hidden />
+</div>
+        </header>
+
+        <!-- GRILLE D'ICÔNES -->
+        <section class="grid-container">
+            <div class="grid-header">
+                <h2>Iconothèque <span class="badge">0 icône</span></h2>
+                <div class="grid-actions">
+                    <button id="rescan-library-btn" class="mui-btn outlined">
+                        <span class="material-symbols-outlined btn-icon">refresh</span>
+                        Rescanner
+                    </button>
+                    <button id="delete-selection-btn" class="mui-btn text danger">Supprimer la sélection</button>
+                </div>
+            </div>
+            <div class="icon-grid" id="icon-grid">
+                <!-- Les icônes apparaîtront ici -->
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
