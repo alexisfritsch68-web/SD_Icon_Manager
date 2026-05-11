@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com"
+      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost https://cdn.steamgriddb.com https://cdn2.steamgriddb.com https://cdn3.steamgriddb.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com"
     }
   }
 }

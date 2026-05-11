@@ -1,50 +1,55 @@
 const grid = document.getElementById('icon-grid');
 const countBadge = document.querySelector('.badge');
+
 const urlInput = document.getElementById('url-input');
 const downloadBtn = document.getElementById('download-btn');
 const steamGridDbApiKeyBtn = document.getElementById('steamgriddb-api-key-btn');
 const localFilesBtn = document.getElementById('local-files-btn');
 const fileInput = document.getElementById('file-input');
+
 const rescanLibraryBtn = document.getElementById('rescan-library-btn');
 const deleteSelectionBtn = document.getElementById('delete-selection-btn');
 
+const sgdbSearchInput = document.getElementById('sgdb-search-input');
+const sgdbSearchBtn = document.getElementById('sgdb-search-btn');
+const sgdbResultsTitle = document.getElementById('sgdb-results-title');
+const sgdbResultsGrid = document.getElementById('sgdb-results-grid');
+const clearSgdbResultsBtn = document.getElementById('clear-sgdb-results-btn');
+const sgdbLoadMoreBtn = document.getElementById('sgdb-load-more-btn');
+
+const searchTabBtn = document.getElementById('search-tab-btn');
+const localTabBtn = document.getElementById('local-tab-btn');
+const searchTabPanel = document.getElementById('search-tab-panel');
+const localTabPanel = document.getElementById('local-tab-panel');
+
 const selectedIconIds = new Set();
+
+const SGDB_PAGE_LIMIT = 50;
+
+let currentSgdbGameName = '';
+let currentSgdbPage = 0;
+let currentSgdbHasMore = false;
+let currentSgdbSearchToken = 0;
+
+function activateTab(tabName) {
+    const isSearchTab = tabName === 'search';
+
+    searchTabBtn.classList.toggle('active', isSearchTab);
+    localTabBtn.classList.toggle('active', !isSearchTab);
+
+    searchTabPanel.classList.toggle('active', isSearchTab);
+    localTabPanel.classList.toggle('active', !isSearchTab);
+}
 
 function isSteamGridDbCollectionUrl(url) {
     return url.includes('steamgriddb.com/collection/');
 }
 
-async function rescanLibrary() {
-    rescanLibraryBtn.disabled = true;
-    rescanLibraryBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Scan...';
-
-    setLoading('Rescan de l’iconothèque et optimisation des images...');
-
-    try {
-        const result = await window.__TAURI__.core.invoke('rescan_library');
-
-        console.log('Résultat du rescan :', result);
-
-        await loadLibrary();
-
-        if (result.failed > 0) {
-            alert(
-                `Rescan terminé avec erreurs.\n\n` +
-                `Images scannées : ${result.scanned}\n` +
-                `Images transformées : ${result.transformed}\n` +
-                `Échecs : ${result.failed}`
-            );
-        }
-    } catch (error) {
-        console.error('Erreur lors du rescan:', error);
-        setError(error);
-    } finally {
-        rescanLibraryBtn.disabled = false;
-        rescanLibraryBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">refresh</span> Rescanner';
-    }
+function updateCount(count) {
+    countBadge.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
 }
 
-function setLoading(message) {
+function setLibraryLoading(message) {
     grid.innerHTML = `
         <div class="state-message">
             ${message}
@@ -52,7 +57,7 @@ function setLoading(message) {
     `;
 }
 
-function setError(error) {
+function setLibraryError(error) {
     grid.innerHTML = `
         <div class="state-message error">
             Erreur : ${error}
@@ -60,8 +65,46 @@ function setError(error) {
     `;
 }
 
-function updateCount(count) {
-    countBadge.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
+function setSteamGridDbResultsLoading(message) {
+    activateTab('search');
+
+    sgdbResultsGrid.innerHTML = `
+        <div class="state-message">
+            ${message}
+        </div>
+    `;
+}
+
+function setSteamGridDbResultsError(error) {
+    activateTab('search');
+
+    sgdbResultsGrid.innerHTML = `
+        <div class="state-message error">
+            Erreur : ${error}
+        </div>
+    `;
+
+    sgdbLoadMoreBtn.hidden = true;
+}
+
+function resetSteamGridDbResults() {
+    currentSgdbGameName = '';
+    currentSgdbPage = 0;
+    currentSgdbHasMore = false;
+    currentSgdbSearchToken += 1;
+
+    sgdbLoadMoreBtn.hidden = true;
+    sgdbLoadMoreBtn.disabled = false;
+    sgdbLoadMoreBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">expand_more</span> Charger plus';
+
+    sgdbResultsTitle.textContent = 'Résultats SteamGridDB';
+    sgdbResultsGrid.innerHTML = `
+        <div class="empty-state">
+            <span class="material-symbols-outlined empty-state-icon">travel_explore</span>
+            <h2>Recherche SteamGridDB</h2>
+            <p>Entre le nom d’un jeu pour trouver directement ses icônes.</p>
+        </div>
+    `;
 }
 
 function readFileAsDataUrl(file) {
@@ -82,6 +125,9 @@ async function configureSteamGridDbApiKey() {
         return;
     }
 
+    steamGridDbApiKeyBtn.disabled = true;
+    steamGridDbApiKeyBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Test...';
+
     try {
         await window.__TAURI__.core.invoke('save_steamgriddb_api_key', {
             apiKey: apiKey.trim(),
@@ -92,13 +138,16 @@ async function configureSteamGridDbApiKey() {
         alert(testResult);
     } catch (error) {
         console.error('Erreur SteamGridDB:', error);
-        setError(error);
+        alert(`Erreur SteamGridDB : ${error}`);
+    } finally {
+        steamGridDbApiKeyBtn.disabled = false;
+        steamGridDbApiKeyBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">key</span> Clé SGDB';
     }
 }
 
 async function loadLibrary() {
     selectedIconIds.clear();
-    setLoading('Chargement de l’iconothèque...');
+    setLibraryLoading('Chargement de l’iconothèque...');
 
     try {
         const icons = await window.__TAURI__.core.invoke('get_library');
@@ -116,6 +165,8 @@ async function loadLibrary() {
             `;
             return;
         }
+
+        const fragment = document.createDocumentFragment();
 
         icons.forEach(icon => {
             const card = document.createElement('div');
@@ -143,11 +194,42 @@ async function loadLibrary() {
                 }
             });
 
-            grid.appendChild(card);
+            fragment.appendChild(card);
         });
+
+        grid.appendChild(fragment);
     } catch (error) {
         console.error('Erreur lors du chargement de la bibliothèque:', error);
-        setError(error);
+        setLibraryError(error);
+    }
+}
+
+async function rescanLibrary() {
+    rescanLibraryBtn.disabled = true;
+    rescanLibraryBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Scan...';
+
+    activateTab('local');
+    setLibraryLoading('Rescan de l’iconothèque et optimisation des images...');
+
+    try {
+        const result = await window.__TAURI__.core.invoke('rescan_library');
+
+        await loadLibrary();
+
+        if (result.failed > 0) {
+            alert(
+                `Rescan terminé avec erreurs.\n\n` +
+                `Images scannées : ${result.scanned}\n` +
+                `Images transformées : ${result.transformed}\n` +
+                `Échecs : ${result.failed}`
+            );
+        }
+    } catch (error) {
+        console.error('Erreur lors du rescan:', error);
+        setLibraryError(error);
+    } finally {
+        rescanLibraryBtn.disabled = false;
+        rescanLibraryBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">refresh</span> Rescanner';
     }
 }
 
@@ -158,7 +240,8 @@ async function importLocalFiles(files) {
         return;
     }
 
-    setLoading(`Import de ${imageFiles.length} fichier${imageFiles.length > 1 ? 's' : ''}...`);
+    activateTab('local');
+    setLibraryLoading(`Import de ${imageFiles.length} fichier${imageFiles.length > 1 ? 's' : ''}...`);
 
     try {
         for (const file of imageFiles) {
@@ -173,7 +256,7 @@ async function importLocalFiles(files) {
         await loadLibrary();
     } catch (error) {
         console.error('Erreur lors de l’import:', error);
-        setError(error);
+        setLibraryError(error);
     } finally {
         fileInput.value = '';
     }
@@ -188,7 +271,7 @@ async function downloadIconFromUrl() {
     }
 
     downloadBtn.disabled = true;
-    downloadBtn.textContent = 'Téléchargement...';
+    downloadBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Téléchargement...';
 
     try {
         const command = isSteamGridDbCollectionUrl(url)
@@ -198,6 +281,7 @@ async function downloadIconFromUrl() {
         const result = await window.__TAURI__.core.invoke(command, { url });
 
         urlInput.value = '';
+        activateTab('local');
         await loadLibrary();
 
         if (result && result.downloaded !== undefined) {
@@ -210,7 +294,8 @@ async function downloadIconFromUrl() {
         }
     } catch (error) {
         console.error('Erreur lors du téléchargement:', error);
-        setError(error);
+        activateTab('local');
+        setLibraryError(error);
     } finally {
         downloadBtn.disabled = false;
         downloadBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">download</span> Télécharger';
@@ -237,38 +322,238 @@ async function deleteSelectedIcons() {
         await loadLibrary();
     } catch (error) {
         console.error('Erreur lors de la suppression:', error);
-        setError(error);
+        setLibraryError(error);
     }
 }
 
-localFilesBtn.addEventListener('click', () => {
-    fileInput.click();
-});
+function createSteamGridDbIconCard(icon, gameName) {
+    const card = document.createElement('div');
+    card.className = 'icon-card sgdb-result-card';
 
-fileInput.addEventListener('change', () => {
-    importLocalFiles(fileInput.files);
-});
+    const img = document.createElement('img');
+    img.src = icon.thumb || icon.url;
+    img.alt = `Icône ${gameName}`;
+    img.loading = 'lazy';
 
-downloadBtn.addEventListener('click', downloadIconFromUrl);
+    const title = document.createElement('span');
+    title.textContent = gameName;
 
-urlInput.addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-        downloadIconFromUrl();
+    const downloadButton = document.createElement('button');
+    downloadButton.className = 'mui-btn primary sgdb-download-btn';
+    downloadButton.innerHTML = '<span class="material-symbols-outlined btn-icon">download</span>';
+    downloadButton.title = `Télécharger l’icône de ${gameName}`;
+
+    downloadButton.addEventListener('click', async event => {
+        event.stopPropagation();
+        await downloadSteamGridDbAsset(icon, gameName, downloadButton);
+    });
+
+    card.appendChild(img);
+    card.appendChild(title);
+    card.appendChild(downloadButton);
+
+    return card;
+}
+
+function renderSteamGridDbResults(result, append = false) {
+    activateTab('search');
+
+    currentSgdbGameName = result.game.name;
+    currentSgdbPage = result.page ?? 0;
+    currentSgdbHasMore = Boolean(result.has_more);
+
+    sgdbResultsTitle.textContent = `Résultats SteamGridDB — ${result.game.name}`;
+
+    if (!append) {
+        sgdbResultsGrid.innerHTML = '';
     }
-});
 
-rescanLibraryBtn.addEventListener('click', rescanLibrary);
+    if (!result.icons || result.icons.length === 0) {
+        if (!append) {
+            sgdbResultsGrid.innerHTML = `
+                <div class="empty-state">
+                    <span class="material-symbols-outlined empty-state-icon">image_not_supported</span>
+                    <h2>Aucune icône trouvée</h2>
+                    <p>SteamGridDB n’a retourné aucune icône compatible pour ce jeu.</p>
+                </div>
+            `;
+        }
 
-steamGridDbApiKeyBtn.addEventListener('click', configureSteamGridDbApiKey);
-
-urlInput.addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-        downloadIconFromUrl();
+        sgdbLoadMoreBtn.hidden = true;
+        return;
     }
-});
 
-rescanLibraryBtn.addEventListener('click', rescanLibrary);
+    const fragment = document.createDocumentFragment();
 
-deleteSelectionBtn.addEventListener('click', deleteSelectedIcons);
+    result.icons.forEach(icon => {
+        fragment.appendChild(createSteamGridDbIconCard(icon, result.game.name));
+    });
 
-loadLibrary();
+    sgdbResultsGrid.appendChild(fragment);
+
+    sgdbLoadMoreBtn.hidden = !currentSgdbHasMore;
+}
+
+async function searchSteamGridDbIcons() {
+    const gameName = sgdbSearchInput.value.trim();
+
+    if (!gameName) {
+        sgdbSearchInput.focus();
+        return;
+    }
+
+    const searchToken = currentSgdbSearchToken + 1;
+
+    currentSgdbSearchToken = searchToken;
+    currentSgdbGameName = gameName;
+    currentSgdbPage = 0;
+    currentSgdbHasMore = false;
+
+    sgdbLoadMoreBtn.hidden = true;
+    sgdbSearchBtn.disabled = true;
+    sgdbSearchBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Recherche...';
+
+    setSteamGridDbResultsLoading('Recherche du jeu puis récupération des icônes SteamGridDB...');
+
+    try {
+        const result = await window.__TAURI__.core.invoke('search_steamgriddb_icon_page', {
+            gameName,
+            page: 0,
+            limit: SGDB_PAGE_LIMIT,
+        });
+
+        if (searchToken !== currentSgdbSearchToken) {
+            return;
+        }
+
+        renderSteamGridDbResults(result, false);
+    } catch (error) {
+        if (searchToken !== currentSgdbSearchToken) {
+            return;
+        }
+
+        console.error('Erreur lors de la recherche SteamGridDB:', error);
+        setSteamGridDbResultsError(error);
+    } finally {
+        if (searchToken === currentSgdbSearchToken) {
+            sgdbSearchBtn.disabled = false;
+            sgdbSearchBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">search</span> Rechercher';
+        }
+    }
+}
+
+async function loadMoreSteamGridDbIcons() {
+    if (!currentSgdbGameName || !currentSgdbHasMore || sgdbLoadMoreBtn.disabled) {
+        return;
+    }
+
+    const nextPage = currentSgdbPage + 1;
+    const searchToken = currentSgdbSearchToken;
+
+    sgdbLoadMoreBtn.disabled = true;
+    sgdbLoadMoreBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span> Chargement...';
+
+    try {
+        const result = await window.__TAURI__.core.invoke('search_steamgriddb_icon_page', {
+            gameName: currentSgdbGameName,
+            page: nextPage,
+            limit: SGDB_PAGE_LIMIT,
+        });
+
+        if (searchToken !== currentSgdbSearchToken) {
+            return;
+        }
+
+        renderSteamGridDbResults(result, true);
+    } catch (error) {
+        if (searchToken !== currentSgdbSearchToken) {
+            return;
+        }
+
+        console.error('Erreur lors du chargement des résultats SteamGridDB:', error);
+        alert(`Impossible de charger plus de résultats : ${error}`);
+    } finally {
+        if (searchToken === currentSgdbSearchToken) {
+            sgdbLoadMoreBtn.disabled = false;
+            sgdbLoadMoreBtn.innerHTML = '<span class="material-symbols-outlined btn-icon">expand_more</span> Charger plus';
+            sgdbLoadMoreBtn.hidden = !currentSgdbHasMore;
+        }
+    }
+}
+
+async function downloadSteamGridDbAsset(icon, gameName, button) {
+    button.disabled = true;
+    button.innerHTML = '<span class="material-symbols-outlined btn-icon">hourglass_empty</span>';
+
+    try {
+        await window.__TAURI__.core.invoke('download_steamgriddb_icon_asset', {
+            assetId: icon.id,
+            url: icon.url,
+            gameName,
+        });
+
+        await loadLibrary();
+
+        button.innerHTML = '<span class="material-symbols-outlined btn-icon">check</span>';
+        button.title = 'Icône téléchargée';
+    } catch (error) {
+        console.error('Erreur lors du téléchargement SteamGridDB:', error);
+        alert(`Impossible de télécharger l’icône : ${error}`);
+
+        button.disabled = false;
+        button.innerHTML = '<span class="material-symbols-outlined btn-icon">download</span>';
+    }
+}
+
+function registerEventListeners() {
+    localFilesBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', () => {
+        importLocalFiles(fileInput.files);
+    });
+
+    downloadBtn.addEventListener('click', downloadIconFromUrl);
+
+    urlInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            downloadIconFromUrl();
+        }
+    });
+
+    sgdbSearchBtn.addEventListener('click', searchSteamGridDbIcons);
+
+    sgdbSearchInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            searchSteamGridDbIcons();
+        }
+    });
+
+    sgdbLoadMoreBtn.addEventListener('click', loadMoreSteamGridDbIcons);
+
+    clearSgdbResultsBtn.addEventListener('click', resetSteamGridDbResults);
+
+    searchTabBtn.addEventListener('click', () => {
+        activateTab('search');
+    });
+
+    localTabBtn.addEventListener('click', () => {
+        activateTab('local');
+    });
+
+    rescanLibraryBtn.addEventListener('click', rescanLibrary);
+
+    steamGridDbApiKeyBtn.addEventListener('click', configureSteamGridDbApiKey);
+
+    deleteSelectionBtn.addEventListener('click', deleteSelectedIcons);
+}
+
+function init() {
+    registerEventListeners();
+    activateTab('search');
+    resetSteamGridDbResults();
+    loadLibrary();
+}
+
+init();

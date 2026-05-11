@@ -41,40 +41,85 @@
         <!-- APP BAR (Barre du haut) -->
         <header class="app-bar">
             <div class="import-zone">
-    <input id="url-input" type="text" placeholder="Coller un lien SGDB..." class="mui-input" />
-    <button id="download-btn" class="mui-btn primary">
-        <span class="material-symbols-outlined btn-icon">download</span>
-        Télécharger
-    </button>
-    <button id="steamgriddb-api-key-btn" class="mui-btn outlined">
-        <span class="material-symbols-outlined btn-icon">key</span>
-        Clé SGDB
-    </button>
-    <button id="local-files-btn" class="mui-btn outlined">
-        <span class="material-symbols-outlined btn-icon">add</span>
-        Fichiers locaux
-    </button>
-    <input id="file-input" type="file" accept="image/*" multiple hidden />
-</div>
-        </header>
+            <input id="url-input" type="text" placeholder="Coller un lien SGDB ou une URL d’image..." class="mui-input" />
+            <button id="download-btn" class="mui-btn primary">
+                <span class="material-symbols-outlined btn-icon">download</span>
+                Télécharger
+            </button>
+            <button id="steamgriddb-api-key-btn" class="mui-btn outlined">
+                <span class="material-symbols-outlined btn-icon">key</span>
+                Clé SGDB
+            </button>
+            <button id="local-files-btn" class="mui-btn outlined">
+                <span class="material-symbols-outlined btn-icon">add</span>
+                Fichiers locaux
+            </button>
+            <input id="file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+    </header>
 
-        <!-- GRILLE D'ICÔNES -->
-        <section class="grid-container">
-            <div class="grid-header">
-                <h2>Iconothèque <span class="badge">0 icône</span></h2>
-                <div class="grid-actions">
-                    <button id="rescan-library-btn" class="mui-btn outlined">
-                        <span class="material-symbols-outlined btn-icon">refresh</span>
-                        Rescanner
-                    </button>
-                    <button id="delete-selection-btn" class="mui-btn text danger">Supprimer la sélection</button>
+    <section class="tabs-container">
+        <div class="tabs-header">
+            <button id="search-tab-btn" class="tab-btn active" type="button">
+                <span class="material-symbols-outlined">search</span>
+                Recherche SteamGridDB
+            </button>
+            <button id="local-tab-btn" class="tab-btn" type="button">
+                <span class="material-symbols-outlined">photo_library</span>
+                Icônes locales
+            </button>
+        </div>
+
+        <section id="search-tab-panel" class="tab-panel active">
+            <div class="sgdb-search-zone">
+                <input id="sgdb-search-input" type="text" placeholder="Rechercher les icônes d’un jeu sur SteamGridDB..." class="mui-input" />
+                <button id="sgdb-search-btn" class="mui-btn outlined">
+                    <span class="material-symbols-outlined btn-icon">search</span>
+                    Rechercher
+                </button>
+            </div>
+
+            <section id="sgdb-results-section" class="sgdb-results-section">
+                <div class="grid-header">
+                    <h2 id="sgdb-results-title">Résultats SteamGridDB</h2>
+                    <button id="clear-sgdb-results-btn" class="mui-btn text">Effacer</button>
                 </div>
-            </div>
-            <div class="icon-grid" id="icon-grid">
-                <!-- Les icônes apparaîtront ici -->
-            </div>
+                <div id="sgdb-results-grid" class="icon-grid">
+                    <div class="empty-state">
+                        <span class="material-symbols-outlined empty-state-icon">travel_explore</span>
+                        <h2>Recherche SteamGridDB</h2>
+                        <p>Entre le nom d’un jeu pour trouver directement ses icônes.</p>
+                    </div>
+                </div>
+
+                <div class="load-more-container">
+                    <button id="sgdb-load-more-btn" class="mui-btn outlined" type="button" hidden>
+                        <span class="material-symbols-outlined btn-icon">expand_more</span>
+                        Charger plus
+                    </button>
+                </div>
+            </section>
         </section>
-    </main>
+
+        <section id="local-tab-panel" class="tab-panel">
+            <section class="grid-container">
+                <div class="grid-header">
+                    <h2>Iconothèque <span class="badge">0 icône</span></h2>
+                    <div class="grid-actions">
+                        <button id="rescan-library-btn" class="mui-btn outlined">
+                            <span class="material-symbols-outlined btn-icon">refresh</span>
+                            Rescanner
+                        </button>
+                        <button id="delete-selection-btn" class="mui-btn text danger">Supprimer la sélection</button>
+                    </div>
+                </div>
+                <div class="icon-grid" id="icon-grid">
+                    <!-- Les icônes apparaîtront ici -->
+                </div>
+            </section>
+        </section>
+    </section>
+</main>
 </div>
 
 <script src="main.js"></script>

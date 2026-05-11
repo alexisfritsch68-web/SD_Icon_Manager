@@ -76,7 +76,80 @@ body {
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.import-zone { display: flex; gap: 16px; align-items: center; }
+.import-zone {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.tabs-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.tabs-header {
+    display: flex;
+    gap: 8px;
+    padding: 20px 32px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.tab-btn.active {
+    color: var(--primary-main);
+    border-bottom-color: var(--primary-main);
+}
+
+.tab-btn .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.tab-panel {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+.sgdb-search-zone {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 24px 32px 0;
+}
+
+.sgdb-results-section {
+    padding: 32px;
+}
+
+.grid-container {
+    padding: 32px;
+}
 
 .mui-input {
     flex: 1;
@@ -136,7 +209,23 @@ body {
 .mui-btn.text:hover { background-color: rgba(239, 83, 80, 0.08); }
 
 /* --- GRILLE --- */
-.grid-container { padding: 32px; }
+.sgdb-result-card {
+    padding-bottom: 44px;
+}
+
+.sgdb-download-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    min-width: 44px;
+    padding: 8px 12px;
+    transform: translateX(-50%);
+    z-index: 2;
+}
+
+.sgdb-download-btn .btn-icon {
+    pointer-events: none;
+}
 
 .grid-header {
     display: flex;
@@ -240,4 +329,10 @@ body {
 .url-textarea {
     min-height: 58px;
     resize: vertical;
+}
+
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0 8px;
 }
