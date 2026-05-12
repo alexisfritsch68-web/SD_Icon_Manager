@@ -294,6 +294,19 @@ pub fn save_steamgriddb_api_key(app: AppHandle, api_key: String) -> Result<(), S
         },
     )
 }
+
+#[tauri::command]
+pub fn get_steamgriddb_api_key(app: AppHandle) -> Result<Option<String>, String> {
+    let config = read_steamgriddb_config(&app)?;
+    let api_key = config.api_key.trim();
+
+    if api_key.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(api_key.to_string()))
+    }
+}
+
 fn sanitize_download_name(value: &str) -> String {
     let sanitized: String = value
         .chars()

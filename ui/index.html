@@ -4,122 +4,301 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SD Icon Manager</title>
-    <!-- Police MUI (Inter) et Material Icons -->
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
     <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
+<header class="window-titlebar" data-tauri-drag-region>
+    <div class="window-titlebar-brand" data-tauri-drag-region>
+        <span class="material-symbols-outlined window-titlebar-logo" data-tauri-drag-region>joystick</span>
+        <div class="window-titlebar-text" data-tauri-drag-region>
+            <strong data-tauri-drag-region>SD Icon Manager</strong>
+            <span data-tauri-drag-region>Gestionnaire d’icônes Stream Deck</span>
+        </div>
+    </div>
+
+    <div class="window-titlebar-actions">
+        <button id="window-minimize-btn" class="window-control-btn" type="button" title="Réduire" aria-label="Réduire">
+            <span class="material-symbols-outlined">remove</span>
+        </button>
+
+        <button id="window-maximize-btn" class="window-control-btn" type="button" title="Agrandir / restaurer" aria-label="Agrandir ou restaurer">
+            <span class="material-symbols-outlined">crop_square</span>
+        </button>
+
+        <button id="window-close-btn" class="window-control-btn close" type="button" title="Fermer" aria-label="Fermer">
+            <span class="material-symbols-outlined">close</span>
+        </button>
+    </div>
+</header>
+
 <div id="app">
-    <!-- SIDEBAR (Menu latéral) -->
     <aside class="sidebar">
         <div class="sidebar-header">
             <span class="material-symbols-outlined logo-icon">joystick</span>
             <h1>SD Manager</h1>
         </div>
+
         <nav class="sidebar-nav">
-            <a href="#" class="nav-item active">
+            <a href="#" class="nav-item active" data-page="library">
                 <span class="material-symbols-outlined">photo_library</span>
                 <span>Iconothèque</span>
             </a>
-            <a href="#" class="nav-item">
+
+            <a href="#" class="nav-item" data-page="packs">
                 <span class="material-symbols-outlined">inventory_2</span>
                 <span>Mes Packs</span>
             </a>
-            <a href="#" class="nav-item">
-                <span class="material-symbols-outlined">cloud_download</span>
-                <span>Importer</span>
+
+            <a href="#" class="nav-item" data-page="settings">
+                <span class="material-symbols-outlined">settings</span>
+                <span>Paramètres</span>
             </a>
         </nav>
     </aside>
 
-    <!-- CONTENU PRINCIPAL -->
     <main class="main-content">
-        <!-- APP BAR (Barre du haut) -->
-        <header class="app-bar">
-            <div class="import-zone">
-            <input id="url-input" type="text" placeholder="Coller un lien SGDB ou une URL d’image..." class="mui-input" />
-            <button id="download-btn" class="mui-btn primary">
-                <span class="material-symbols-outlined btn-icon">download</span>
-                Télécharger
-            </button>
-            <button id="steamgriddb-api-key-btn" class="mui-btn outlined">
-                <span class="material-symbols-outlined btn-icon">key</span>
-                Clé SGDB
-            </button>
-            <button id="local-files-btn" class="mui-btn outlined">
-                <span class="material-symbols-outlined btn-icon">add</span>
-                Fichiers locaux
-            </button>
-            <input id="file-input" type="file" accept="image/*" multiple hidden />
-        </div>
-    </header>
+        <section id="library-page" class="app-page active">
+            <header class="app-bar">
+                <div class="import-zone app-status-zone">
+                    <div class="app-bar-title">
+                            <span class="material-symbols-outlined">travel_explore</span>
+                            <div>
+                                <strong>Navigateur SteamGridDB</strong>
+                                <span>Recherche et importe directement des icônes depuis SteamGridDB.</span>
+                            </div>
+                        </div>
 
-    <section class="tabs-container">
-        <div class="tabs-header">
-            <button id="search-tab-btn" class="tab-btn active" type="button">
-                <span class="material-symbols-outlined">search</span>
-                Recherche SteamGridDB
-            </button>
-            <button id="local-tab-btn" class="tab-btn" type="button">
-                <span class="material-symbols-outlined">photo_library</span>
-                Icônes locales
-            </button>
-        </div>
+                        <div id="steamgriddb-api-status" class="api-status unknown" title="État de la clé SteamGridDB">
+                            <span class="api-status-dot"></span>
+                            <span id="steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
+                        </div>
 
-        <section id="search-tab-panel" class="tab-panel active">
-            <div class="sgdb-search-zone">
-                <input id="sgdb-search-input" type="text" placeholder="Rechercher les icônes d’un jeu sur SteamGridDB..." class="mui-input" />
-                <button id="sgdb-search-btn" class="mui-btn outlined">
-                    <span class="material-symbols-outlined btn-icon">search</span>
-                    Rechercher
-                </button>
-            </div>
-
-            <section id="sgdb-results-section" class="sgdb-results-section">
-                <div class="grid-header">
-                    <h2 id="sgdb-results-title">Résultats SteamGridDB</h2>
-                    <button id="clear-sgdb-results-btn" class="mui-btn text">Effacer</button>
-                </div>
-                <div id="sgdb-results-grid" class="icon-grid">
-                    <div class="empty-state">
-                        <span class="material-symbols-outlined empty-state-icon">travel_explore</span>
-                        <h2>Recherche SteamGridDB</h2>
-                        <p>Entre le nom d’un jeu pour trouver directement ses icônes.</p>
+                        <input id="file-input" type="file" accept="image/*" multiple hidden />
                     </div>
-                </div>
+                </header>
 
-                <div class="load-more-container">
-                    <button id="sgdb-load-more-btn" class="mui-btn outlined" type="button" hidden>
-                        <span class="material-symbols-outlined btn-icon">expand_more</span>
-                        Charger plus
+            <section class="tabs-container">
+                <div class="tabs-header">
+                    <button id="search-tab-btn" class="tab-btn active" type="button">
+                        <span class="material-symbols-outlined">search</span>
+                        Recherche SteamGridDB
+                    </button>
+
+                    <button id="local-tab-btn" class="tab-btn" type="button">
+                        <span class="material-symbols-outlined">photo_library</span>
+                        Icônes locales
                     </button>
                 </div>
+
+                <section id="search-tab-panel" class="tab-panel active">
+                    <div class="sgdb-search-zone">
+                        <input
+                                id="sgdb-search-input"
+                                type="text"
+                                placeholder="Rechercher les icônes d’un jeu sur SteamGridDB..."
+                                class="mui-input"
+                        />
+
+                        <button id="sgdb-search-btn" class="mui-btn outlined" type="button">
+                            <span class="material-symbols-outlined btn-icon">search</span>
+                            Rechercher
+                        </button>
+                    </div>
+
+                    <section id="sgdb-results-section" class="sgdb-results-section">
+                        <div class="grid-header">
+                            <h2 id="sgdb-results-title">Résultats SteamGridDB</h2>
+                            <button id="clear-sgdb-results-btn" class="mui-btn text" type="button">Effacer</button>
+                        </div>
+
+                        <div id="sgdb-results-grid" class="icon-grid">
+                            <div class="empty-state">
+                                <span class="material-symbols-outlined empty-state-icon">travel_explore</span>
+                                <h2>Recherche SteamGridDB</h2>
+                                <p>Entre le nom d’un jeu pour trouver directement ses icônes.</p>
+                            </div>
+                        </div>
+
+                        <div class="load-more-container">
+                            <button id="sgdb-load-more-btn" class="mui-btn outlined" type="button" hidden>
+                                <span class="material-symbols-outlined btn-icon">expand_more</span>
+                                Charger plus
+                            </button>
+                        </div>
+                    </section>
+                </section>
+
+                <section id="local-tab-panel" class="tab-panel">
+                    <section class="library-layout">
+                        <header class="library-hero">
+                            <div class="library-hero-main">
+                                <div class="library-hero-icon">
+                                    <span class="material-symbols-outlined">photo_library</span>
+                                </div>
+
+                                <div>
+                                    <p class="eyebrow">Bibliothèque locale</p>
+                                    <h2>Iconothèque</h2>
+                                    <p class="library-hero-description">
+                                        Gère tes icônes locales, sélectionne plusieurs éléments et prépare tes packs.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="library-stats">
+                                <div class="library-stat-card">
+                                    <span class="material-symbols-outlined">apps</span>
+                                    <div>
+                                        <strong class="badge">0 icône</strong>
+                                        <small>Total enregistré</small>
+                                    </div>
+
+                                    <button id="rescan-library-btn" class="mui-btn outlined icon-only-btn" type="button" title="Rescanner l’iconothèque" aria-label="Rescanner l’iconothèque">
+                                        <span class="material-symbols-outlined btn-icon">refresh</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </header>
+
+                            <section class="library-toolbar">
+                                <div class="library-toolbar-info">
+                                    <span class="material-symbols-outlined">touch_app</span>
+                                    <div>
+                                        <strong>Sélection multiple</strong>
+                                        <span>Clique sur les icônes pour les sélectionner ou les désélectionner.</span>
+                                    </div>
+                                </div>
+
+                                <div class="library-local-search">
+                                    <span class="material-symbols-outlined">search</span>
+                                    <input
+                                            id="local-icon-search-input"
+                                            type="text"
+                                            placeholder="Rechercher une icône locale..."
+                                            autocomplete="off"
+                                    />
+                                </div>
+
+                                <div class="grid-actions">
+                                    <button id="local-files-btn" class="mui-btn outlined" type="button">
+                                        <span class="material-symbols-outlined btn-icon">add</span>
+                                        Fichiers locaux
+                                    </button>
+
+                                    <button id="delete-selection-btn" class="mui-btn text danger" type="button">
+                                        <span class="material-symbols-outlined btn-icon">delete</span>
+                                        Supprimer la sélection
+                                    </button>
+                                </div>
+                            </section>
+
+                        <section class="library-grid-panel">
+                            <div id="icon-grid" class="icon-grid library-icon-grid">
+                                <!-- Les icônes apparaîtront ici -->
+                            </div>
+                        </section>
+                    </section>
+                </section>
             </section>
         </section>
 
-        <section id="local-tab-panel" class="tab-panel">
-            <section class="grid-container">
-                <div class="grid-header">
-                    <h2>Iconothèque <span class="badge">0 icône</span></h2>
-                    <div class="grid-actions">
-                        <button id="rescan-library-btn" class="mui-btn outlined">
-                            <span class="material-symbols-outlined btn-icon">refresh</span>
-                            Rescanner
-                        </button>
-                        <button id="delete-selection-btn" class="mui-btn text danger">Supprimer la sélection</button>
+        <section id="packs-page" class="app-page">
+            <div class="settings-page-content" id="packs-page-content">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <span class="material-symbols-outlined settings-card-icon">inventory_2</span>
+                        <div>
+                            <h2>Mes Packs</h2>
+                            <p>Gère tes packs d’icônes Stream Deck.</p>
+                        </div>
                     </div>
+
+                    <p class="settings-help">
+                        Aucun pack n’est affiché pour le moment.
+                    </p>
                 </div>
-                <div class="icon-grid" id="icon-grid">
-                    <!-- Les icônes apparaîtront ici -->
-                </div>
-            </section>
+            </div>
         </section>
-    </section>
-</main>
+
+        <section id="settings-page" class="app-page">
+            <div class="settings-page-content">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <span class="material-symbols-outlined settings-card-icon">key</span>
+                        <div>
+                            <h2>Clé API SteamGridDB</h2>
+                            <p>Configure et teste ta clé API pour utiliser la recherche SteamGridDB.</p>
+                        </div>
+                    </div>
+
+                    <div class="settings-status-row">
+                        <div id="settings-steamgriddb-api-status" class="api-status unknown" title="État de la clé SteamGridDB">
+                            <span class="api-status-dot"></span>
+                            <span id="settings-steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
+                        </div>
+                    </div>
+
+                    <label class="settings-label" for="saved-steamgriddb-api-key">Clé API enregistrée</label>
+
+                    <div class="settings-input-row">
+                        <input
+                                id="saved-steamgriddb-api-key"
+                                type="password"
+                                class="mui-input"
+                                placeholder="Aucune clé SteamGridDB enregistrée"
+                                readonly
+                        />
+
+                        <button id="toggle-saved-steamgriddb-api-key-visibility-btn" class="mui-btn outlined" type="button">
+                            <span class="material-symbols-outlined btn-icon">visibility</span>
+                            Afficher
+                        </button>
+                    </div>
+
+                    <label class="settings-label" for="steamgriddb-api-key-input">Nouvelle clé API</label>
+
+                    <div class="settings-input-row">
+                        <input
+                                id="steamgriddb-api-key-input"
+                                type="password"
+                                class="mui-input"
+                                placeholder="Colle une nouvelle clé SteamGridDB..."
+                                autocomplete="off"
+                        />
+
+                        <button id="toggle-steamgriddb-api-key-visibility-btn" class="mui-btn outlined" type="button">
+                            <span class="material-symbols-outlined btn-icon">visibility</span>
+                            Afficher
+                        </button>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button id="save-steamgriddb-api-key-btn" class="mui-btn primary" type="button">
+                            <span class="material-symbols-outlined btn-icon">save</span>
+                            Enregistrer et tester
+                        </button>
+
+                        <button id="test-steamgriddb-api-key-btn" class="mui-btn outlined" type="button">
+                            <span class="material-symbols-outlined btn-icon">science</span>
+                            Tester la clé actuelle
+                        </button>
+                    </div>
+
+                    <p class="settings-help">
+                        La clé est enregistrée localement dans la configuration de l’application.
+                        Après l’enregistrement, elle est automatiquement testée.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
 </div>
 
 <script src="main.js"></script>
