@@ -887,7 +887,6 @@ button:disabled {
 /* Settings cards */
 .settings-card {
     position: relative;
-    max-width: 820px;
     overflow: hidden;
     padding: 30px;
     border: 1px solid var(--color-border);
@@ -2159,4 +2158,218 @@ body {
 
 #app {
     height: calc(100vh - 42px);
+}
+
+.pack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.pack-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pack-list-item > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pack-list-item span {
+    opacity: 0.72;
+    font-size: 0.9rem;
+}
+
+.pack-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pack-subnav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 22px 0;
+    padding: 6px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.pack-subnav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    opacity: 0.76;
+}
+
+.pack-subnav-btn:hover,
+.pack-subnav-btn.active {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.pack-view,
+.pack-edit-subview {
+    display: none;
+}
+
+.pack-view.active,
+.pack-edit-subview.active {
+    display: block;
+}
+
+.pack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.pack-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.pack-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pack-info strong {
+    color: var(--color-text);
+    font-weight: 720;
+}
+
+.pack-info span {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+.pack-actions,
+.pack-editor-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pack-section-header,
+.pack-editor-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.pack-editor-header {
+    padding: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.pack-editor-section {
+    margin-top: 22px;
+}
+
+.pack-editor-grid {
+    margin-top: 12px;
+}
+
+.pack-icon-card .mui-btn {
+    width: 100%;
+    margin-top: 8px;
+}
+
+.pack-merge-row,
+.pack-export-row {
+    align-items: center;
+}
+
+.pack-merge-row select,
+.pack-export-row select {
+    min-width: 220px;
+}
+
+/* ... existing code ... */
+
+.pack-info small {
+    color: var(--color-text-soft);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.pack-metadata-section {
+    padding: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.014)),
+            rgba(255, 255, 255, 0.022);
+}
+
+.pack-metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.pack-metadata-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pack-metadata-field-wide {
+    grid-column: 1 / -1;
+}
+
+.pack-metadata-field > span {
+    color: var(--color-text-muted);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.pack-metadata-textarea {
+    min-height: 96px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.pack-metadata-actions {
+    margin-top: 16px;
+    margin-bottom: 0;
+}
+
+@media (max-width: 1180px) {
+    .pack-metadata-grid {
+        grid-template-columns: 1fr;
+    }
 }

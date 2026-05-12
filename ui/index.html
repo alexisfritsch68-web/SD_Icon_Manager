@@ -13,7 +13,6 @@
 </head>
 
 <body>
-
 <header class="window-titlebar" data-tauri-drag-region>
     <div class="window-titlebar-brand" data-tauri-drag-region>
         <span class="material-symbols-outlined window-titlebar-logo" data-tauri-drag-region>joystick</span>
@@ -68,21 +67,21 @@
             <header class="app-bar">
                 <div class="import-zone app-status-zone">
                     <div class="app-bar-title">
-                            <span class="material-symbols-outlined">travel_explore</span>
-                            <div>
-                                <strong>Navigateur SteamGridDB</strong>
-                                <span>Recherche et importe directement des icônes depuis SteamGridDB.</span>
-                            </div>
+                        <span class="material-symbols-outlined">travel_explore</span>
+                        <div>
+                            <strong>Navigateur SteamGridDB</strong>
+                            <span>Recherche et importe directement des icônes depuis SteamGridDB.</span>
                         </div>
-
-                        <div id="steamgriddb-api-status" class="api-status unknown" title="État de la clé SteamGridDB">
-                            <span class="api-status-dot"></span>
-                            <span id="steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
-                        </div>
-
-                        <input id="file-input" type="file" accept="image/*" multiple hidden />
                     </div>
-                </header>
+
+                    <div id="steamgriddb-api-status" class="api-status unknown" title="État de la clé SteamGridDB">
+                        <span class="api-status-dot"></span>
+                        <span id="steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
+                    </div>
+
+                    <input id="file-input" type="file" accept="image/*" multiple hidden />
+                </div>
+            </header>
 
             <section class="tabs-container">
                 <div class="tabs-header">
@@ -167,42 +166,40 @@
                             </div>
                         </header>
 
-                            <section class="library-toolbar">
-                                <div class="library-toolbar-info">
-                                    <span class="material-symbols-outlined">touch_app</span>
-                                    <div>
-                                        <strong>Sélection multiple</strong>
-                                        <span>Clique sur les icônes pour les sélectionner ou les désélectionner.</span>
-                                    </div>
+                        <section class="library-toolbar">
+                            <div class="library-toolbar-info">
+                                <span class="material-symbols-outlined">touch_app</span>
+                                <div>
+                                    <strong>Sélection multiple</strong>
+                                    <span>Clique sur les icônes pour les sélectionner ou les désélectionner.</span>
                                 </div>
+                            </div>
 
-                                <div class="library-local-search">
-                                    <span class="material-symbols-outlined">search</span>
-                                    <input
-                                            id="local-icon-search-input"
-                                            type="text"
-                                            placeholder="Rechercher une icône locale..."
-                                            autocomplete="off"
-                                    />
-                                </div>
+                            <div class="library-local-search">
+                                <span class="material-symbols-outlined">search</span>
+                                <input
+                                        id="local-icon-search-input"
+                                        type="text"
+                                        placeholder="Rechercher une icône locale..."
+                                        autocomplete="off"
+                                />
+                            </div>
 
-                                <div class="grid-actions">
-                                    <button id="local-files-btn" class="mui-btn outlined" type="button">
-                                        <span class="material-symbols-outlined btn-icon">add</span>
-                                        Fichiers locaux
-                                    </button>
+                            <div class="grid-actions">
+                                <button id="local-files-btn" class="mui-btn outlined" type="button">
+                                    <span class="material-symbols-outlined btn-icon">add</span>
+                                    Fichiers locaux
+                                </button>
 
-                                    <button id="delete-selection-btn" class="mui-btn text danger" type="button">
-                                        <span class="material-symbols-outlined btn-icon">delete</span>
-                                        Supprimer la sélection
-                                    </button>
-                                </div>
-                            </section>
+                                <button id="delete-selection-btn" class="mui-btn text danger" type="button">
+                                    <span class="material-symbols-outlined btn-icon">delete</span>
+                                    Supprimer la sélection
+                                </button>
+                            </div>
+                        </section>
 
                         <section class="library-grid-panel">
-                            <div id="icon-grid" class="icon-grid library-icon-grid">
-                                <!-- Les icônes apparaîtront ici -->
-                            </div>
+                            <div id="icon-grid" class="icon-grid library-icon-grid"></div>
                         </section>
                     </section>
                 </section>
@@ -211,18 +208,137 @@
 
         <section id="packs-page" class="app-page">
             <div class="settings-page-content" id="packs-page-content">
-                <div class="settings-card">
+                <div class="settings-card packs-manager-card">
                     <div class="settings-card-header">
                         <span class="material-symbols-outlined settings-card-icon">inventory_2</span>
                         <div>
                             <h2>Mes Packs</h2>
-                            <p>Gère tes packs d’icônes Stream Deck.</p>
+                            <p>Crée, édite, fusionne et exporte tes packs Stream Deck.</p>
                         </div>
                     </div>
 
-                    <p class="settings-help">
-                        Aucun pack n’est affiché pour le moment.
-                    </p>
+                    <nav class="pack-subnav" aria-label="Navigation des packs">
+                        <button class="pack-subnav-btn active" type="button" data-pack-view="create">
+                            <span class="material-symbols-outlined">add_box</span>
+                            Création
+                        </button>
+
+                        <button class="pack-subnav-btn" type="button" data-pack-view="edit">
+                            <span class="material-symbols-outlined">edit</span>
+                            Édition
+                        </button>
+
+                        <button class="pack-subnav-btn" type="button" data-pack-view="merge">
+                            <span class="material-symbols-outlined">call_merge</span>
+                            Fusion
+                        </button>
+
+                        <button class="pack-subnav-btn" type="button" data-pack-view="export">
+                            <span class="material-symbols-outlined">archive</span>
+                            Exportation
+                        </button>
+                    </nav>
+
+                    <section id="pack-create-view" class="pack-view active">
+                        <div class="pack-section-header">
+                            <div>
+                                <h3>Créer un pack</h3>
+                                <p>Donne un nom à ton pack. Tu pourras ensuite l’éditer dans l’onglet Édition.</p>
+                            </div>
+                        </div>
+
+                        <div class="settings-input-row pack-create-row">
+                            <input
+                                    id="new-pack-name-input"
+                                    type="text"
+                                    class="mui-input"
+                                    placeholder="Nom du nouveau pack..."
+                                    autocomplete="off"
+                            />
+
+                            <button id="create-pack-btn" class="mui-btn primary" type="button">
+                                <span class="material-symbols-outlined btn-icon">add_box</span>
+                                Créer le pack
+                            </button>
+                        </div>
+
+                        <div id="pack-create-list" class="pack-list"></div>
+                    </section>
+
+                    <section id="pack-edit-view" class="pack-view">
+                        <div id="pack-edit-home" class="pack-edit-subview active">
+                            <div class="pack-section-header">
+                                <div>
+                                    <h3>Choisir un pack à éditer</h3>
+                                    <p>Sélectionne un pack pour ouvrir sa page dédiée.</p>
+                                </div>
+
+                                <button id="refresh-packs-btn" class="mui-btn outlined icon-only-btn" type="button" title="Actualiser les packs" aria-label="Actualiser les packs">
+                                    <span class="material-symbols-outlined btn-icon">refresh</span>
+                                </button>
+                            </div>
+
+                            <div id="pack-edit-list" class="pack-list"></div>
+                        </div>
+
+                        <div id="pack-edit-detail" class="pack-edit-subview">
+                            <div id="pack-edit-detail-content"></div>
+                        </div>
+                    </section>
+
+                    <section id="pack-merge-view" class="pack-view">
+                        <div class="pack-section-header">
+                            <div>
+                                <h3>Fusionner deux packs</h3>
+                                <p>Les icônes du pack source seront ajoutées au pack destination.</p>
+                            </div>
+                        </div>
+
+                        <div class="settings-input-row pack-merge-row">
+                            <select id="merge-source-pack-select" class="mui-input">
+                                <option value="">Pack source...</option>
+                            </select>
+
+                            <span class="material-symbols-outlined">arrow_forward</span>
+
+                            <select id="merge-target-pack-select" class="mui-input">
+                                <option value="">Pack destination...</option>
+                            </select>
+
+                            <button id="merge-packs-btn" class="mui-btn primary" type="button">
+                                <span class="material-symbols-outlined btn-icon">call_merge</span>
+                                Fusionner
+                            </button>
+                        </div>
+
+                        <p class="settings-help">
+                            La fusion ne supprime pas le pack source. Les doublons sont ignorés automatiquement.
+                        </p>
+                    </section>
+
+                    <section id="pack-export-view" class="pack-view">
+                        <div class="pack-section-header">
+                            <div>
+                                <h3>Exporter pour Stream Deck</h3>
+                                <p>Génère un fichier <strong>.streamDeckIconPack</strong> prêt à importer dans Stream Deck.</p>
+                            </div>
+                        </div>
+
+                        <div class="settings-input-row pack-export-row">
+                            <select id="export-pack-select" class="mui-input">
+                                <option value="">Choisir un pack...</option>
+                            </select>
+
+                            <button id="export-pack-btn" class="mui-btn primary" type="button">
+                                <span class="material-symbols-outlined btn-icon">archive</span>
+                                Exporter
+                            </button>
+                        </div>
+
+                        <div id="pack-export-summary" class="settings-help">
+                            Sélectionne un pack à exporter.
+                        </div>
+                    </section>
                 </div>
             </div>
         </section>

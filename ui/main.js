@@ -4,20 +4,13 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const invoke = (command, args) => window.__TAURI__.core.invoke(command, args);
 const icon = name => `<span class="material-symbols-outlined btn-icon">${name}</span>`;
 
-const formatError = error => {
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    if (typeof error === 'string') {
-        return error;
-    }
-
-    try {
-        return JSON.stringify(error);
-    } catch {
-        return String(error);
-    }
+const DEFAULT_PACK_METADATA = {
+    author: 'Arckanics_Reiko',
+    version: '1.0.0',
+    description: "Pack d'icônes généré avec SD Icon Manager.",
+    category: 'Gaming',
+    tags: ['Gaming'],
+    license: 'Generated icon pack. Icons remain the property of their respective owners.',
 };
 
 const el = {
@@ -52,7 +45,23 @@ const el = {
 
     navItems: $$('.nav-item[data-page]'),
     pages: $$('.app-page'),
-    packsPageContent: $('#packs-page-content'),
+
+    packSubnavButtons: $$('.pack-subnav-btn'),
+    packViews: $$('.pack-view'),
+    packCreateList: $('#pack-create-list'),
+    packEditHome: $('#pack-edit-home'),
+    packEditDetail: $('#pack-edit-detail'),
+    packEditList: $('#pack-edit-list'),
+    packEditDetailContent: $('#pack-edit-detail-content'),
+    newPackNameInput: $('#new-pack-name-input'),
+    createPack: $('#create-pack-btn'),
+    refreshPacks: $('#refresh-packs-btn'),
+    mergeSourcePackSelect: $('#merge-source-pack-select'),
+    mergeTargetPackSelect: $('#merge-target-pack-select'),
+    mergePacks: $('#merge-packs-btn'),
+    exportPackSelect: $('#export-pack-select'),
+    exportPack: $('#export-pack-btn'),
+    packExportSummary: $('#pack-export-summary'),
 
     settingsApiStatus: $('#settings-steamgriddb-api-status'),
     settingsApiStatusLabel: $('#settings-steamgriddb-api-status-label'),
@@ -64,33 +73,6 @@ const el = {
     settingsApiKeyToggleVisibility: $('#toggle-steamgriddb-api-key-visibility-btn'),
 };
 
-async function refreshSavedSteamGridDbApiKey() {
-    try {
-        const apiKey = await invoke('get_steamgriddb_api_key');
-
-        el.savedSettingsApiKeyInput.value = apiKey || '';
-        el.savedSettingsApiKeyInput.placeholder = apiKey
-            ? 'Clé SteamGridDB enregistrée'
-            : 'Aucune clé SteamGridDB enregistrée';
-
-        el.savedSettingsApiKeyToggleVisibility.disabled = !apiKey;
-        el.savedSettingsApiKeyInput.type = 'password';
-        el.savedSettingsApiKeyToggleVisibility.innerHTML = `${icon('visibility')} Afficher`;
-    } catch (error) {
-        console.error('Erreur lors du chargement de la clé SteamGridDB:', error);
-        notifyError('Lecture de la clé SteamGridDB impossible', error);
-    }
-}
-
-function toggleSavedSteamGridDbApiKeyVisibility() {
-    const isPassword = el.savedSettingsApiKeyInput.type === 'password';
-
-    el.savedSettingsApiKeyInput.type = isPassword ? 'text' : 'password';
-    el.savedSettingsApiKeyToggleVisibility.innerHTML = isPassword
-        ? `${icon('visibility_off')} Masquer`
-        : `${icon('visibility')} Afficher`;
-}
-
 const SGDB_PAGE_LIMIT = 50;
 
 const selectedIconIds = new Set();
@@ -98,7 +80,8 @@ const notifications = [];
 const sgdbDownloadById = new Map();
 
 let localIcons = [];
-
+let packsCache = [];
+let currentPackName = null;
 let notificationPanel = null;
 let notificationBadge = null;
 
@@ -109,25 +92,49 @@ let sgdb = {
     token: 0,
 };
 
+const formatError = error => {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return String(error);
+    }
+};
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
 function setHtml(target, html) {
-    target.innerHTML = html;
+    if (target) {
+        target.innerHTML = html;
+    }
 }
 
 function messageState(message, type = '') {
-    return `<div class="state-message ${type}">${message}</div>`;
+    return `<div class="state-message ${type}">${escapeHtml(message)}</div>`;
 }
 
 function emptyState(iconName, title, text) {
     return `
         <div class="empty-state">
-            <span class="material-symbols-outlined empty-state-icon">${iconName}</span>
-            <h2>${title}</h2>
-            <p>${text}</p>
+            <span class="material-symbols-outlined empty-state-icon">${escapeHtml(iconName)}</span>
+            <h2>${escapeHtml(title)}</h2>
+            <p>${escapeHtml(text)}</p>
         </div>
     `;
 }
 
 function setButton(button, disabled, html) {
+    if (!button) return;
+
     button.disabled = disabled;
     button.innerHTML = html;
 }
@@ -142,106 +149,18 @@ async function withLoading(button, loadingHtml, normalHtml, task) {
     }
 }
 
-function showDialog({
-                        type = 'info',
-                        iconName = 'info',
-                        title,
-                        message,
-                        confirmText = 'OK',
-                        cancelText = null,
-                        danger = false,
-                    } = {}) {
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'dialog-overlay';
-
-        overlay.innerHTML = `
-            <div class="app-dialog ${type}" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-                <div class="app-dialog-icon ${danger ? 'danger' : ''}">
-                    <span class="material-symbols-outlined">${iconName}</span>
-                </div>
-
-                <div class="app-dialog-content">
-                    <h2 id="dialog-title">${title}</h2>
-                    <p>${message}</p>
-                </div>
-
-                <div class="app-dialog-actions">
-                    ${
-            cancelText
-                ? `<button type="button" class="mui-btn outlined dialog-cancel-btn">${cancelText}</button>`
-                : ''
+function onEnter(input, callback) {
+    input?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            callback();
         }
-                    <button type="button" class="mui-btn ${danger ? 'text danger' : 'primary'} dialog-confirm-btn">
-                        ${confirmText}
-                    </button>
-                </div>
-            </div>
-        `;
-
-        const close = result => {
-            overlay.classList.add('closing');
-
-            window.setTimeout(() => {
-                overlay.remove();
-                resolve(result);
-            }, 140);
-        };
-
-        document.body.appendChild(overlay);
-
-        const confirmButton = $('.dialog-confirm-btn', overlay);
-        const cancelButton = $('.dialog-cancel-btn', overlay);
-
-        confirmButton.focus();
-
-        confirmButton.onclick = () => close(true);
-
-        if (cancelButton) {
-            cancelButton.onclick = () => close(false);
-        }
-
-        overlay.addEventListener('click', event => {
-            if (event.target === overlay && cancelText) {
-                close(false);
-            }
-        });
-
-        overlay.addEventListener('keydown', event => {
-            if (event.key === 'Escape' && cancelText) {
-                close(false);
-            }
-        });
     });
 }
 
-function showConfirmDialog(options) {
-    return showDialog({
-        cancelText: 'Annuler',
-        confirmText: 'Confirmer',
-        ...options,
+function bindButtons(root, selector, handler) {
+    $$(selector, root).forEach(button => {
+        button.onclick = () => handler(button);
     });
-}
-
-function activateTab(tabName) {
-    const isSearch = tabName === 'search';
-
-    el.searchTab.classList.toggle('active', isSearch);
-    el.localTab.classList.toggle('active', !isSearch);
-    el.searchPanel.classList.toggle('active', isSearch);
-    el.localPanel.classList.toggle('active', !isSearch);
-}
-
-function updateCount(count) {
-    el.count.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
-}
-
-function updateDeleteSelectionButton() {
-    const count = selectedIconIds.size;
-
-    el.deleteSelection.hidden = false;
-    el.deleteSelection.disabled = count === 0;
-    el.deleteSelection.innerHTML = `${icon('delete')} Supprimer la sélection${count ? ` (${count})` : ''}`;
 }
 
 function notify(type, title, message) {
@@ -258,15 +177,67 @@ function notify(type, title, message) {
 const notifyError = (title, error) => notify('error', title, error);
 const notifySuccess = (title, message) => notify('success', title, message);
 
-function updateApiStatusElement(statusElement, labelElement, status, message) {
-    if (!statusElement || !labelElement) {
-        return;
-    }
+function showDialog({
+                        type = 'info',
+                        iconName = 'info',
+                        title,
+                        message,
+                        confirmText = 'OK',
+                        cancelText = null,
+                        danger = false,
+                    } = {}) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
 
-    statusElement.classList.remove('unknown', 'checking', 'valid', 'invalid');
-    statusElement.classList.add(status);
-    statusElement.title = message;
-    labelElement.textContent = message;
+        overlay.innerHTML = `
+            <div class="app-dialog ${escapeHtml(type)}" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+                <div class="app-dialog-icon ${danger ? 'danger' : ''}">
+                    <span class="material-symbols-outlined">${escapeHtml(iconName)}</span>
+                </div>
+
+                <div class="app-dialog-content">
+                    <h2 id="dialog-title">${escapeHtml(title)}</h2>
+                    <p>${escapeHtml(message)}</p>
+                </div>
+
+                <div class="app-dialog-actions">
+                    ${cancelText ? `<button type="button" class="mui-btn outlined dialog-cancel-btn">${escapeHtml(cancelText)}</button>` : ''}
+                    <button type="button" class="mui-btn ${danger ? 'text danger' : 'primary'} dialog-confirm-btn">
+                        ${escapeHtml(confirmText)}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const close = result => {
+            overlay.classList.add('closing');
+
+            window.setTimeout(() => {
+                overlay.remove();
+                resolve(result);
+            }, 140);
+        };
+
+        document.body.appendChild(overlay);
+
+        $('.dialog-confirm-btn', overlay).onclick = () => close(true);
+        $('.dialog-cancel-btn', overlay)?.addEventListener('click', () => close(false));
+
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay && cancelText) {
+                close(false);
+            }
+        });
+    });
+}
+
+function showConfirmDialog(options) {
+    return showDialog({
+        cancelText: 'Annuler',
+        confirmText: 'Confirmer',
+        ...options,
+    });
 }
 
 function createNotificationSystem() {
@@ -318,18 +289,13 @@ function createNotificationSystem() {
         boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
     });
 
-    button.addEventListener('click', event => {
+    button.onclick = event => {
         event.stopPropagation();
         notificationPanel.hidden = !notificationPanel.hidden;
-    });
+    };
 
-    notificationPanel.addEventListener('click', event => {
-        event.stopPropagation();
-    });
-
-    document.addEventListener('click', () => {
-        notificationPanel.hidden = true;
-    });
+    notificationPanel.onclick = event => event.stopPropagation();
+    document.addEventListener('click', () => notificationPanel.hidden = true);
 
     container.append(notificationPanel, button);
     document.body.appendChild(container);
@@ -358,12 +324,13 @@ function renderNotifications() {
             <strong>Notifications</strong>
             <button type="button" class="mui-btn notification-clear-btn">Tout effacer</button>
         </div>
+
         <div class="notification-list">
             ${notifications.slice().reverse().map(notification => `
-                <div class="notification-item ${notification.type}" style="padding:10px;margin-bottom:8px;border-radius:8px;background:${notification.type === 'error' ? '#3a1515' : '#15301f'};">
-                    <strong>${notification.title}</strong>
-                    <p style="margin:6px 0 0;">${notification.message}</p>
-                    <small style="display:block;margin-top:6px;opacity:.75;">${notification.createdAt.toLocaleString()}</small>
+                <div class="notification-item ${escapeHtml(notification.type)}" style="padding:10px;margin-bottom:8px;border-radius:8px;background:${notification.type === 'error' ? '#3a1515' : '#15301f'};">
+                    <strong>${escapeHtml(notification.title)}</strong>
+                    <p style="margin:6px 0 0;">${escapeHtml(notification.message)}</p>
+                    <small style="display:block;margin-top:6px;opacity:.75;">${escapeHtml(notification.createdAt.toLocaleString())}</small>
                 </div>
             `).join('')}
         </div>
@@ -375,9 +342,35 @@ function renderNotifications() {
     };
 }
 
+function updateApiStatusElement(statusElement, labelElement, status, message) {
+    if (!statusElement || !labelElement) return;
+
+    statusElement.classList.remove('unknown', 'checking', 'valid', 'invalid');
+    statusElement.classList.add(status);
+    statusElement.title = message;
+    labelElement.textContent = message;
+}
+
 function setSteamGridDbApiStatus(status, message) {
     updateApiStatusElement(el.apiStatus, el.apiStatusLabel, status, message);
     updateApiStatusElement(el.settingsApiStatus, el.settingsApiStatusLabel, status, message);
+}
+
+async function refreshSavedSteamGridDbApiKey() {
+    try {
+        const apiKey = await invoke('get_steamgriddb_api_key');
+
+        el.savedSettingsApiKeyInput.value = apiKey || '';
+        el.savedSettingsApiKeyInput.placeholder = apiKey
+            ? 'Clé SteamGridDB enregistrée'
+            : 'Aucune clé SteamGridDB enregistrée';
+
+        el.savedSettingsApiKeyToggleVisibility.disabled = !apiKey;
+        el.savedSettingsApiKeyInput.type = 'password';
+        el.savedSettingsApiKeyToggleVisibility.innerHTML = `${icon('visibility')} Afficher`;
+    } catch (error) {
+        notifyError('Lecture de la clé SteamGridDB impossible', error);
+    }
 }
 
 async function refreshSteamGridDbApiStatus({ notify: shouldNotify = false } = {}) {
@@ -405,106 +398,76 @@ async function refreshSteamGridDbApiStatus({ notify: shouldNotify = false } = {}
     }
 }
 
+function toggleSavedSteamGridDbApiKeyVisibility() {
+    const isPassword = el.savedSettingsApiKeyInput.type === 'password';
+
+    el.savedSettingsApiKeyInput.type = isPassword ? 'text' : 'password';
+    el.savedSettingsApiKeyToggleVisibility.innerHTML = isPassword
+        ? `${icon('visibility_off')} Masquer`
+        : `${icon('visibility')} Afficher`;
+}
+
+function toggleSteamGridDbApiKeyVisibility() {
+    const isPassword = el.settingsApiKeyInput.type === 'password';
+
+    el.settingsApiKeyInput.type = isPassword ? 'text' : 'password';
+    el.settingsApiKeyToggleVisibility.innerHTML = isPassword
+        ? `${icon('visibility_off')} Masquer`
+        : `${icon('visibility')} Afficher`;
+}
+
+function activateTab(tabName) {
+    const isSearch = tabName === 'search';
+
+    el.searchTab.classList.toggle('active', isSearch);
+    el.localTab.classList.toggle('active', !isSearch);
+    el.searchPanel.classList.toggle('active', isSearch);
+    el.localPanel.classList.toggle('active', !isSearch);
+}
+
+function updateCount(count) {
+    el.count.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
+}
+
+function updateDeleteSelectionButton() {
+    const count = selectedIconIds.size;
+
+    el.deleteSelection.hidden = false;
+    el.deleteSelection.disabled = count === 0;
+    el.deleteSelection.innerHTML = `${icon('delete')} Supprimer la sélection${count ? ` (${count})` : ''}`;
+}
+
 function setLibraryLoading(message) {
     setHtml(el.grid, messageState(message));
 }
 
 function setLibraryError(error) {
     notifyError('Erreur dans l’iconothèque', error);
-    setHtml(
-        el.grid,
-        messageState('Une erreur est survenue. Consulte les notifications pour plus de détails.', 'error')
-    );
-}
-
-function setSgdbLoading(message) {
-    activateTab('search');
-    setHtml(el.sgdbGrid, messageState(message));
-}
-
-function setSgdbError(error) {
-    activateTab('search');
-    notifyError('Erreur SteamGridDB', error);
-    setHtml(
-        el.sgdbGrid,
-        messageState('Une erreur est survenue. Consulte les notifications pour plus de détails.', 'error')
-    );
-    el.sgdbMore.hidden = true;
-}
-
-function resetSteamGridDbResults() {
-    sgdb = {
-        gameName: '',
-        page: 0,
-        hasMore: false,
-        token: sgdb.token + 1,
-    };
-
-    el.sgdbMore.hidden = true;
-    el.sgdbMore.disabled = false;
-    el.sgdbMore.innerHTML = `${icon('expand_more')} Charger plus`;
-    el.sgdbTitle.textContent = 'Résultats SteamGridDB';
-
-    setHtml(
-        el.sgdbGrid,
-        emptyState(
-            'travel_explore',
-            'Recherche SteamGridDB',
-            'Entre le nom d’un jeu pour trouver directement ses icônes.'
-        )
-    );
-}
-
-function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-    });
+    setHtml(el.grid, messageState('Une erreur est survenue. Consulte les notifications pour plus de détails.', 'error'));
 }
 
 function renderLocalIcons(icons = localIcons) {
     const search = el.localIconSearch?.value.trim().toLowerCase() ?? '';
-
     const filteredIcons = search
         ? icons.filter(iconData => iconData.name.toLowerCase().includes(search))
         : icons;
 
     if (icons.length === 0) {
-        setHtml(
-            el.grid,
-            emptyState(
-                'folder_off',
-                'Iconothèque vide',
-                'Utilise le bouton "Fichiers locaux" pour ajouter des icônes.'
-            )
-        );
+        setHtml(el.grid, emptyState('folder_off', 'Iconothèque vide', 'Utilise le bouton "Fichiers locaux" pour ajouter des icônes.'));
         return;
     }
 
     if (filteredIcons.length === 0) {
-        setHtml(
-            el.grid,
-            emptyState(
-                'search_off',
-                'Aucune icône trouvée',
-                `Aucune icône locale ne correspond à “${el.localIconSearch.value.trim()}”.`
-            )
-        );
+        setHtml(el.grid, emptyState('search_off', 'Aucune icône trouvée', `Aucune icône locale ne correspond à “${el.localIconSearch.value.trim()}”.`));
         return;
     }
 
-    setHtml(
-        el.grid,
-        filteredIcons.map(iconData => `
-            <div class="icon-card" data-icon-id="${iconData.id}">
-                <img src="${iconData.data_url}" alt="${iconData.name}" loading="lazy">
-                <span>${iconData.name}</span>
-            </div>
-        `).join('')
-    );
+    setHtml(el.grid, filteredIcons.map(iconData => `
+        <div class="icon-card" data-icon-id="${escapeHtml(iconData.id)}">
+            <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
+            <span>${escapeHtml(iconData.name)}</span>
+        </div>
+    `).join(''));
 }
 
 async function loadLibrary() {
@@ -518,42 +481,47 @@ async function loadLibrary() {
         updateCount(localIcons.length);
         renderLocalIcons();
         updateDeleteSelectionButton();
+
+        if ($('#packs-page')?.classList.contains('active')) {
+            await renderPacksPage();
+        }
     } catch (error) {
-        console.error('Erreur lors du chargement de la bibliothèque:', error);
         setLibraryError(error);
     }
 }
 
 async function rescanLibrary() {
-    await withLoading(
-        el.rescan,
-        icon('hourglass_empty'),
-        icon('refresh'),
-        async () => {
-            activateTab('local');
-            setLibraryLoading('Rescan de l’iconothèque et optimisation des images...');
+    await withLoading(el.rescan, icon('hourglass_empty'), icon('refresh'), async () => {
+        activateTab('local');
+        setLibraryLoading('Rescan de l’iconothèque et optimisation des images...');
 
-            try {
-                const result = await invoke('rescan_library');
+        try {
+            const result = await invoke('rescan_library');
 
-                await loadLibrary();
+            await loadLibrary();
 
-                const message =
-                    `Images scannées : ${result.scanned}\n` +
-                    `Images transformées : ${result.transformed}` +
-                    (result.failed > 0 ? `\nÉchecs : ${result.failed}` : '');
+            const message =
+                `Images scannées : ${result.scanned}\n` +
+                `Images transformées : ${result.transformed}` +
+                (result.failed > 0 ? `\nÉchecs : ${result.failed}` : '');
 
-                if (result.failed > 0) {
-                    notifyError('Rescan terminé avec erreurs', message);
-                } else {
-                    notifySuccess('Rescan terminé', message);
-                }
-            } catch (error) {
-                console.error('Erreur lors du rescan:', error);
-                setLibraryError(error);
-            }
+            result.failed > 0
+                ? notifyError('Rescan terminé avec erreurs', message)
+                : notifySuccess('Rescan terminé', message);
+        } catch (error) {
+            setLibraryError(error);
         }
-    );
+    });
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
 }
 
 async function importLocalFiles(files) {
@@ -576,7 +544,6 @@ async function importLocalFiles(files) {
 
         await loadLibrary();
     } catch (error) {
-        console.error('Erreur lors de l’import:', error);
         setLibraryError(error);
     } finally {
         el.file.value = '';
@@ -595,9 +562,7 @@ async function deleteSelectedIcons() {
         type: 'danger',
         iconName: 'delete',
         title: 'Supprimer la sélection ?',
-        message:
-            `Tu es sur le point de supprimer ${iconIds.length} icône${iconIds.length > 1 ? 's' : ''} sélectionnée${iconIds.length > 1 ? 's' : ''}. ` +
-            'Cette action est définitive.',
+        message: `Tu es sur le point de supprimer ${iconIds.length} icône${iconIds.length > 1 ? 's' : ''}. Cette action est définitive.`,
         confirmText: 'Supprimer',
         cancelText: 'Annuler',
         danger: true,
@@ -607,28 +572,58 @@ async function deleteSelectedIcons() {
         return;
     }
 
-    await withLoading(
-        el.deleteSelection,
-        `${icon('hourglass_empty')} Suppression...`,
-        `${icon('delete')} Supprimer la sélection`,
-        async () => {
-            try {
-                await invoke('delete_icons', { iconIds });
+    await withLoading(el.deleteSelection, `${icon('hourglass_empty')} Suppression...`, `${icon('delete')} Supprimer la sélection`, async () => {
+        try {
+            await invoke('delete_icons', { iconIds });
 
-                notifySuccess(
-                    'Suppression terminée',
-                    `${iconIds.length} icône${iconIds.length > 1 ? 's ont été supprimées' : ' a été supprimée'}.`
-                );
+            notifySuccess(
+                'Suppression terminée',
+                `${iconIds.length} icône${iconIds.length > 1 ? 's ont été supprimées' : ' a été supprimée'}.`
+            );
 
-                await loadLibrary();
-            } catch (error) {
-                console.error('Erreur lors de la suppression:', error);
-                setLibraryError(error);
-            } finally {
-                updateDeleteSelectionButton();
-            }
+            await loadLibrary();
+        } catch (error) {
+            setLibraryError(error);
+        } finally {
+            updateDeleteSelectionButton();
         }
-    );
+    });
+}
+
+function toggleLocalIconSelection(card) {
+    const iconId = card.dataset.iconId;
+    const selected = card.classList.toggle('selected');
+
+    selected ? selectedIconIds.add(iconId) : selectedIconIds.delete(iconId);
+    updateDeleteSelectionButton();
+}
+
+function resetSteamGridDbResults() {
+    sgdb = {
+        gameName: '',
+        page: 0,
+        hasMore: false,
+        token: sgdb.token + 1,
+    };
+
+    el.sgdbMore.hidden = true;
+    el.sgdbMore.disabled = false;
+    el.sgdbMore.innerHTML = `${icon('expand_more')} Charger plus`;
+    el.sgdbTitle.textContent = 'Résultats SteamGridDB';
+
+    setHtml(el.sgdbGrid, emptyState('travel_explore', 'Recherche SteamGridDB', 'Entre le nom d’un jeu pour trouver directement ses icônes.'));
+}
+
+function setSgdbLoading(message) {
+    activateTab('search');
+    setHtml(el.sgdbGrid, messageState(message));
+}
+
+function setSgdbError(error) {
+    activateTab('search');
+    notifyError('Erreur SteamGridDB', error);
+    setHtml(el.sgdbGrid, messageState('Une erreur est survenue. Consulte les notifications pour plus de détails.', 'error'));
+    el.sgdbMore.hidden = true;
 }
 
 function renderSteamGridDbResults(result, append = false) {
@@ -637,7 +632,6 @@ function renderSteamGridDbResults(result, append = false) {
     sgdb.gameName = result.game.name;
     sgdb.page = result.page ?? 0;
     sgdb.hasMore = Boolean(result.has_more);
-
     el.sgdbTitle.textContent = `Résultats SteamGridDB — ${result.game.name}`;
 
     if (!append) {
@@ -647,14 +641,7 @@ function renderSteamGridDbResults(result, append = false) {
 
     if (!result.icons?.length) {
         if (!append) {
-            setHtml(
-                el.sgdbGrid,
-                emptyState(
-                    'image_not_supported',
-                    'Aucune icône trouvée',
-                    'SteamGridDB n’a retourné aucune icône compatible pour ce jeu.'
-                )
-            );
+            setHtml(el.sgdbGrid, emptyState('image_not_supported', 'Aucune icône trouvée', 'SteamGridDB n’a retourné aucune icône compatible pour ce jeu.'));
         }
 
         el.sgdbMore.hidden = true;
@@ -669,9 +656,9 @@ function renderSteamGridDbResults(result, append = false) {
 
         return `
             <div class="icon-card sgdb-result-card">
-                <img src="${asset.thumb || asset.url}" alt="Icône ${result.game.name}" loading="lazy">
-                <span>${result.game.name}</span>
-                <button class="mui-btn primary sgdb-download-btn" data-asset-id="${asset.id}" title="Télécharger l’icône de ${result.game.name}">
+                <img src="${escapeHtml(asset.thumb || asset.url)}" alt="Icône ${escapeHtml(result.game.name)}" loading="lazy">
+                <span>${escapeHtml(result.game.name)}</span>
+                <button class="mui-btn primary sgdb-download-btn" data-asset-id="${escapeHtml(asset.id)}" title="Télécharger l’icône de ${escapeHtml(result.game.name)}">
                     ${icon('download')}
                 </button>
             </div>
@@ -700,31 +687,25 @@ async function searchSteamGridDbIcons() {
 
     el.sgdbMore.hidden = true;
 
-    await withLoading(
-        el.sgdbSearchBtn,
-        `${icon('hourglass_empty')} Recherche...`,
-        `${icon('search')} Rechercher`,
-        async () => {
-            setSgdbLoading('Recherche du jeu puis récupération des icônes SteamGridDB...');
+    await withLoading(el.sgdbSearchBtn, `${icon('hourglass_empty')} Recherche...`, `${icon('search')} Rechercher`, async () => {
+        setSgdbLoading('Recherche du jeu puis récupération des icônes SteamGridDB...');
 
-            try {
-                const result = await invoke('search_steamgriddb_icon_page', {
-                    gameName,
-                    page: 0,
-                    limit: SGDB_PAGE_LIMIT,
-                });
+        try {
+            const result = await invoke('search_steamgriddb_icon_page', {
+                gameName,
+                page: 0,
+                limit: SGDB_PAGE_LIMIT,
+            });
 
-                if (token === sgdb.token) {
-                    renderSteamGridDbResults(result);
-                }
-            } catch (error) {
-                if (token === sgdb.token) {
-                    console.error('Erreur lors de la recherche SteamGridDB:', error);
-                    setSgdbError(error);
-                }
+            if (token === sgdb.token) {
+                renderSteamGridDbResults(result);
+            }
+        } catch (error) {
+            if (token === sgdb.token) {
+                setSgdbError(error);
             }
         }
-    );
+    });
 }
 
 async function loadMoreSteamGridDbIcons() {
@@ -734,33 +715,27 @@ async function loadMoreSteamGridDbIcons() {
 
     const token = sgdb.token;
 
-    await withLoading(
-        el.sgdbMore,
-        `${icon('hourglass_empty')} Chargement...`,
-        `${icon('expand_more')} Charger plus`,
-        async () => {
-            try {
-                const result = await invoke('search_steamgriddb_icon_page', {
-                    gameName: sgdb.gameName,
-                    page: sgdb.page + 1,
-                    limit: SGDB_PAGE_LIMIT,
-                });
+    await withLoading(el.sgdbMore, `${icon('hourglass_empty')} Chargement...`, `${icon('expand_more')} Charger plus`, async () => {
+        try {
+            const result = await invoke('search_steamgriddb_icon_page', {
+                gameName: sgdb.gameName,
+                page: sgdb.page + 1,
+                limit: SGDB_PAGE_LIMIT,
+            });
 
-                if (token === sgdb.token) {
-                    renderSteamGridDbResults(result, true);
-                }
-            } catch (error) {
-                if (token === sgdb.token) {
-                    console.error('Erreur lors du chargement des résultats SteamGridDB:', error);
-                    notifyError('Chargement SteamGridDB impossible', error);
-                }
-            } finally {
-                if (token === sgdb.token) {
-                    el.sgdbMore.hidden = !sgdb.hasMore;
-                }
+            if (token === sgdb.token) {
+                renderSteamGridDbResults(result, true);
+            }
+        } catch (error) {
+            if (token === sgdb.token) {
+                notifyError('Chargement SteamGridDB impossible', error);
+            }
+        } finally {
+            if (token === sgdb.token) {
+                el.sgdbMore.hidden = !sgdb.hasMore;
             }
         }
-    );
+    });
 }
 
 async function downloadSteamGridDbAsset(asset, gameName, button) {
@@ -778,37 +753,715 @@ async function downloadSteamGridDbAsset(asset, gameName, button) {
         button.innerHTML = icon('check');
         button.title = 'Icône téléchargée';
 
-        notifySuccess(
-            'Icône téléchargée',
-            `L’icône de ${gameName} a été ajoutée à l’iconothèque.`
-        );
+        notifySuccess('Icône téléchargée', `L’icône de ${gameName} a été ajoutée à l’iconothèque.`);
     } catch (error) {
-        console.error('Erreur lors du téléchargement SteamGridDB:', error);
         notifyError('Téléchargement SteamGridDB impossible', error);
-
         setButton(button, false, icon('download'));
     }
 }
 
-function toggleLocalIconSelection(card) {
-    const iconId = card.dataset.iconId;
-    const selected = card.classList.toggle('selected');
+const packByName = name => packsCache.find(pack => pack.name === name) ?? null;
+const iconById = id => localIcons.find(iconData => iconData.id === id) ?? null;
+const packCount = pack => `${pack.icons.length} icône${pack.icons.length > 1 ? 's' : ''}`;
 
-    if (selected) {
-        selectedIconIds.add(iconId);
-    } else {
-        selectedIconIds.delete(iconId);
-    }
-
-    updateDeleteSelectionButton();
+function packMetadata(pack) {
+    return {
+        name: pack.metadata?.name || pack.name,
+        author: pack.metadata?.author || DEFAULT_PACK_METADATA.author,
+        version: pack.metadata?.version || DEFAULT_PACK_METADATA.version,
+        description: pack.metadata?.description || DEFAULT_PACK_METADATA.description,
+        category: pack.metadata?.category || DEFAULT_PACK_METADATA.category,
+        tags: Array.isArray(pack.metadata?.tags) && pack.metadata.tags.length > 0
+            ? pack.metadata.tags
+            : DEFAULT_PACK_METADATA.tags,
+        license: pack.metadata?.license || DEFAULT_PACK_METADATA.license,
+    };
 }
 
-function onEnter(input, callback) {
-    input.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-            callback();
+function packOptions(placeholder) {
+    return `
+        <option value="">${escapeHtml(placeholder)}</option>
+        ${packsCache.map(pack => `
+            <option value="${escapeHtml(pack.name)}">${escapeHtml(pack.name)} — ${escapeHtml(packCount(pack))}</option>
+        `).join('')}
+    `;
+}
+
+function packListItem(pack, actions) {
+    const metadata = packMetadata(pack);
+
+    return `
+        <div class="pack-list-item">
+            <div class="pack-info">
+                <strong>${escapeHtml(metadata.name)}</strong>
+                <span>${escapeHtml(packCount(pack))}</span>
+                <small>${escapeHtml(metadata.author)} · v${escapeHtml(metadata.version)}</small>
+            </div>
+
+            <div class="pack-actions">
+                ${actions(pack)}
+            </div>
+        </div>
+    `;
+}
+
+function activatePackView(viewName) {
+    el.packSubnavButtons.forEach(button => {
+        button.classList.toggle('active', button.dataset.packView === viewName);
+    });
+
+    el.packViews.forEach(view => {
+        view.classList.toggle('active', view.id === `pack-${viewName}-view`);
+    });
+
+    renderPacksPage();
+}
+
+function openPackEditor(packName) {
+    currentPackName = packName;
+    el.packEditHome?.classList.remove('active');
+    el.packEditDetail?.classList.add('active');
+    renderPackEditDetail();
+}
+
+function closePackEditor() {
+    currentPackName = null;
+    el.packEditDetail?.classList.remove('active');
+    el.packEditHome?.classList.add('active');
+    renderPackEditList();
+}
+
+function renderPackIconCard(iconData, packName, isInPack) {
+    const action = isInPack
+        ? { className: 'text danger remove-icon-from-pack-btn', iconName: 'remove', label: 'Retirer' }
+        : { className: 'primary add-icon-to-pack-btn', iconName: 'add', label: 'Ajouter' };
+
+    return `
+        <div class="icon-card pack-icon-card ${isInPack ? 'in-pack' : ''}" data-icon-id="${escapeHtml(iconData.id)}">
+            <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
+            <span>${escapeHtml(iconData.name)}</span>
+
+            <button
+                class="mui-btn ${action.className}"
+                type="button"
+                data-pack-name="${escapeHtml(packName)}"
+                data-icon-id="${escapeHtml(iconData.id)}"
+            >
+                ${icon(action.iconName)}
+                ${escapeHtml(action.label)}
+            </button>
+        </div>
+    `;
+}
+
+function renderPackMetadataForm(pack) {
+    const metadata = packMetadata(pack);
+
+    return `
+        <section class="pack-editor-section pack-metadata-section">
+            <div class="pack-section-header">
+                <div>
+                    <h3>Informations du pack</h3>
+                    <p>Ces informations seront utilisées dans le pack Stream Deck exporté.</p>
+                </div>
+            </div>
+
+            <div class="pack-metadata-grid">
+                <label class="pack-metadata-field">
+                    <span>Nom du pack</span>
+                    <input
+                        id="pack-metadata-name-input"
+                        type="text"
+                        class="mui-input"
+                        placeholder="Nom du pack"
+                        value="${escapeHtml(metadata.name)}"
+                    />
+                </label>
+
+                <label class="pack-metadata-field">
+                    <span>Version</span>
+                    <input
+                        id="pack-metadata-version-input"
+                        type="text"
+                        class="mui-input"
+                        placeholder="1.0.0"
+                        value="${escapeHtml(metadata.version)}"
+                    />
+                </label>
+
+                <label class="pack-metadata-field">
+                    <span>Auteur</span>
+                    <input
+                        id="pack-metadata-author-input"
+                        type="text"
+                        class="mui-input"
+                        placeholder="Auteur"
+                        value="${escapeHtml(metadata.author)}"
+                    />
+                </label>
+
+                <label class="pack-metadata-field">
+                    <span>Catégorie</span>
+                    <input
+                        id="pack-metadata-category-input"
+                        type="text"
+                        class="mui-input"
+                        placeholder="Gaming"
+                        value="${escapeHtml(metadata.category)}"
+                    />
+                </label>
+
+                <label class="pack-metadata-field pack-metadata-field-wide">
+                    <span>Tags</span>
+                    <input
+                        id="pack-metadata-tags-input"
+                        type="text"
+                        class="mui-input"
+                        placeholder="Tags séparés par des virgules"
+                        value="${escapeHtml(metadata.tags.join(', '))}"
+                    />
+                </label>
+
+                <label class="pack-metadata-field pack-metadata-field-wide">
+                    <span>Description</span>
+                    <textarea
+                        id="pack-metadata-description-input"
+                        class="mui-input pack-metadata-textarea"
+                        rows="3"
+                        placeholder="Description du pack"
+                    >${escapeHtml(metadata.description)}</textarea>
+                </label>
+
+                <label class="pack-metadata-field pack-metadata-field-wide">
+                    <span>Licence</span>
+                    <textarea
+                        id="pack-metadata-license-input"
+                        class="mui-input pack-metadata-textarea"
+                        rows="4"
+                        placeholder="Texte de licence"
+                    >${escapeHtml(metadata.license)}</textarea>
+                </label>
+            </div>
+
+            <div class="settings-actions pack-metadata-actions">
+                <button
+                    id="save-pack-metadata-btn"
+                    class="mui-btn primary"
+                    type="button"
+                    data-pack-name="${escapeHtml(pack.name)}"
+                >
+                    ${icon('save')}
+                    Enregistrer les informations
+                </button>
+            </div>
+        </section>
+    `;
+}
+
+async function renderPacksPage() {
+    try {
+        packsCache = await invoke('get_packs');
+
+        renderPackCreateList();
+        renderPackEditList();
+        renderPackMergeView();
+        renderPackExportView();
+
+        if (currentPackName) {
+            packByName(currentPackName) ? renderPackEditDetail() : closePackEditor();
+        }
+    } catch (error) {
+        notifyError('Chargement des packs impossible', error);
+    }
+}
+
+function renderPackCreateList() {
+    if (!el.packCreateList) return;
+
+    if (packsCache.length === 0) {
+        setHtml(el.packCreateList, emptyState('inventory_2', 'Aucun pack créé', 'Crée ton premier pack pour commencer.'));
+        return;
+    }
+
+    setHtml(el.packCreateList, packsCache.map(pack => packListItem(pack, item => `
+        <button class="mui-btn outlined open-pack-editor-btn" type="button" data-pack-name="${escapeHtml(item.name)}">
+            ${icon('edit')}
+            Éditer
+        </button>
+    `)).join(''));
+
+    bindButtons(el.packCreateList, '.open-pack-editor-btn', button => {
+        activatePackView('edit');
+        openPackEditor(button.dataset.packName);
+    });
+}
+
+function renderPackEditList() {
+    if (!el.packEditList) return;
+
+    if (packsCache.length === 0) {
+        setHtml(el.packEditList, emptyState('inventory_2', 'Aucun pack disponible', 'Crée un pack avant de l’éditer.'));
+        return;
+    }
+
+    setHtml(el.packEditList, packsCache.map(pack => packListItem(pack, item => `
+        <button class="mui-btn primary open-pack-editor-btn" type="button" data-pack-name="${escapeHtml(item.name)}">
+            ${icon('open_in_new')}
+            Ouvrir
+        </button>
+
+        <button class="mui-btn text danger delete-pack-btn" type="button" data-pack-name="${escapeHtml(item.name)}">
+            ${icon('delete')}
+            Supprimer
+        </button>
+    `)).join(''));
+
+    bindButtons(el.packEditList, '.open-pack-editor-btn', button => openPackEditor(button.dataset.packName));
+    bindButtons(el.packEditList, '.delete-pack-btn', button => deletePack(button.dataset.packName, button));
+}
+
+function renderPackEditDetail() {
+    if (!el.packEditDetailContent || !currentPackName) return;
+
+    const pack = packByName(currentPackName);
+
+    if (!pack) {
+        closePackEditor();
+        return;
+    }
+
+    const metadata = packMetadata(pack);
+    const packIconIds = new Set(pack.icons);
+    const packIcons = pack.icons.map(iconById).filter(Boolean);
+    const availableIcons = localIcons.filter(iconData => !packIconIds.has(iconData.id));
+
+    const packIconsHtml = packIcons.length
+        ? packIcons.map(iconData => renderPackIconCard(iconData, pack.name, true)).join('')
+        : emptyState('inventory_2', 'Pack vide', 'Ajoute des icônes depuis l’iconothèque ci-dessous.');
+
+    const availableIconsHtml = localIcons.length === 0
+        ? emptyState('folder_off', 'Iconothèque vide', 'Importe d’abord des icônes dans ton iconothèque.')
+        : availableIcons.length === 0
+            ? emptyState('done_all', 'Toutes les icônes sont déjà dans ce pack', 'Il n’y a plus d’icône disponible à ajouter.')
+            : availableIcons.map(iconData => renderPackIconCard(iconData, pack.name, false)).join('');
+
+    setHtml(el.packEditDetailContent, `
+        <header class="pack-editor-header">
+            <div>
+                <button id="back-to-pack-list-btn" class="mui-btn text" type="button">
+                    ${icon('arrow_back')}
+                    Retour aux packs
+                </button>
+
+                <p class="eyebrow">Sous-page d’édition</p>
+                <h3>${escapeHtml(metadata.name)}</h3>
+                <p>${escapeHtml(packCount(pack))} dans ce pack.</p>
+            </div>
+
+            <div class="pack-editor-actions">
+                <button
+                    class="mui-btn primary build-pack-btn"
+                    type="button"
+                    data-pack-name="${escapeHtml(pack.name)}"
+                    ${pack.icons.length === 0 ? 'disabled' : ''}
+                >
+                    ${icon('archive')}
+                    Exporter Stream Deck
+                </button>
+
+                <button class="mui-btn text danger delete-pack-btn" type="button" data-pack-name="${escapeHtml(pack.name)}">
+                    ${icon('delete')}
+                    Supprimer
+                </button>
+            </div>
+        </header>
+
+        ${renderPackMetadataForm(pack)}
+
+        <section class="pack-editor-section">
+            <div class="pack-section-header">
+                <div>
+                    <h3>Contenu du pack</h3>
+                    <p>Retire les icônes que tu ne veux plus inclure.</p>
+                </div>
+            </div>
+
+            <div class="icon-grid pack-editor-grid">
+                ${packIconsHtml}
+            </div>
+        </section>
+
+        <section class="pack-editor-section">
+            <div class="pack-section-header">
+                <div>
+                    <h3>Ajouter des icônes</h3>
+                    <p>Ajoute directement des icônes locales à ce pack.</p>
+                </div>
+            </div>
+
+            <div class="icon-grid pack-editor-grid">
+                ${availableIconsHtml}
+            </div>
+        </section>
+    `);
+
+    $('#back-to-pack-list-btn', el.packEditDetailContent).onclick = closePackEditor;
+
+    $('#save-pack-metadata-btn', el.packEditDetailContent).onclick = event => {
+        updatePackMetadata(event.currentTarget.dataset.packName, event.currentTarget);
+    };
+
+    bindButtons(el.packEditDetailContent, '.add-icon-to-pack-btn', button => {
+        updatePackIcons('add_icons_to_pack', button.dataset.packName, [button.dataset.iconId], button);
+    });
+
+    bindButtons(el.packEditDetailContent, '.remove-icon-from-pack-btn', button => {
+        updatePackIcons('remove_icons_from_pack', button.dataset.packName, [button.dataset.iconId], button);
+    });
+
+    bindButtons(el.packEditDetailContent, '.build-pack-btn', button => buildPack(button.dataset.packName, button));
+    bindButtons(el.packEditDetailContent, '.delete-pack-btn', button => deletePack(button.dataset.packName, button));
+}
+
+function renderPackMergeView() {
+    if (!el.mergeSourcePackSelect || !el.mergeTargetPackSelect) return;
+
+    setHtml(el.mergeSourcePackSelect, packOptions('Pack source...'));
+    setHtml(el.mergeTargetPackSelect, packOptions('Pack destination...'));
+}
+
+function renderPackExportView() {
+    if (!el.exportPackSelect) return;
+
+    const previousValue = el.exportPackSelect.value;
+
+    setHtml(el.exportPackSelect, packOptions('Choisir un pack...'));
+
+    if (previousValue && packByName(previousValue)) {
+        el.exportPackSelect.value = previousValue;
+    }
+
+    updatePackExportSummary();
+}
+
+function updatePackExportSummary() {
+    if (!el.packExportSummary) {
+        return;
+    }
+
+    const packName = el.exportPackSelect?.value;
+    const pack = packName ? packByName(packName) : null;
+
+    if (packsCache.length === 0) {
+        el.packExportSummary.textContent = 'Aucun pack à exporter pour le moment.';
+        return;
+    }
+
+    if (!pack) {
+        el.packExportSummary.textContent = 'Sélectionne un pack à exporter.';
+        return;
+    }
+
+    const metadata = packMetadata(pack);
+
+    el.packExportSummary.textContent =
+        `Pack sélectionné : ${metadata.name} — ${packCount(pack)}. Le fichier exporté sera un .streamDeckIconPack.`;
+}
+
+async function createPackFromInput(input, button) {
+    const name = input.value.trim();
+
+    if (!name) {
+        input.focus();
+        notifyError('Création impossible', 'Entre un nom de pack.');
+        return;
+    }
+
+    await withLoading(button, `${icon('hourglass_empty')} Création...`, `${icon('add_box')} Créer le pack`, async () => {
+        try {
+            await invoke('create_pack', { name });
+
+            input.value = '';
+            currentPackName = name;
+
+            notifySuccess('Pack créé', `Le pack “${name}” a été créé.`);
+
+            await renderPacksPage();
+            activatePackView('edit');
+            openPackEditor(name);
+        } catch (error) {
+            notifyError('Création du pack impossible', error);
         }
     });
+}
+
+async function updatePackIcons(command, packName, iconIds, button) {
+    const normalHtml = command === 'add_icons_to_pack'
+        ? `${icon('add')} Ajouter`
+        : `${icon('remove')} Retirer`;
+
+    await withLoading(button, icon('hourglass_empty'), normalHtml, async () => {
+        try {
+            await invoke(command, { packName, iconIds });
+            await renderPacksPage();
+        } catch (error) {
+            notifyError('Modification du pack impossible', error);
+        }
+    });
+}
+
+async function updatePackMetadata(packName, button) {
+    const metadata = {
+        name: $('#pack-metadata-name-input', el.packEditDetailContent).value.trim(),
+        author: $('#pack-metadata-author-input', el.packEditDetailContent).value.trim(),
+        version: $('#pack-metadata-version-input', el.packEditDetailContent).value.trim(),
+        description: $('#pack-metadata-description-input', el.packEditDetailContent).value.trim(),
+        category: $('#pack-metadata-category-input', el.packEditDetailContent).value.trim(),
+        tags: $('#pack-metadata-tags-input', el.packEditDetailContent)
+            .value
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean),
+        license: $('#pack-metadata-license-input', el.packEditDetailContent).value.trim(),
+    };
+
+    if (!metadata.name) {
+        notifyError('Informations invalides', 'Le nom du pack est obligatoire.');
+        return;
+    }
+
+    if (!metadata.author) {
+        notifyError('Informations invalides', 'L’auteur du pack est obligatoire.');
+        return;
+    }
+
+    if (!metadata.version) {
+        notifyError('Informations invalides', 'La version du pack est obligatoire.');
+        return;
+    }
+
+    if (!metadata.description) {
+        notifyError('Informations invalides', 'La description du pack est obligatoire.');
+        return;
+    }
+
+    if (!metadata.category) {
+        notifyError('Informations invalides', 'La catégorie du pack est obligatoire.');
+        return;
+    }
+
+    if (metadata.tags.length === 0) {
+        metadata.tags = [metadata.category];
+    }
+
+    if (!metadata.license) {
+        notifyError('Informations invalides', 'La licence du pack est obligatoire.');
+        return;
+    }
+
+    await withLoading(button, `${icon('hourglass_empty')} Enregistrement...`, `${icon('save')} Enregistrer les informations`, async () => {
+        try {
+            await invoke('update_pack_metadata', {
+                packName,
+                metadata,
+            });
+
+            currentPackName = metadata.name;
+
+            notifySuccess('Informations enregistrées', `Les informations du pack “${metadata.name}” ont été mises à jour.`);
+            await renderPacksPage();
+        } catch (error) {
+            notifyError('Modification des informations impossible', error);
+        }
+    });
+}
+
+async function mergePacks(button) {
+    const sourcePackName = el.mergeSourcePackSelect.value;
+    const targetPackName = el.mergeTargetPackSelect.value;
+
+    if (!sourcePackName || !targetPackName) {
+        notifyError('Fusion impossible', 'Choisis un pack source et un pack destination.');
+        return;
+    }
+
+    if (sourcePackName === targetPackName) {
+        notifyError('Fusion impossible', 'Le pack source et le pack destination doivent être différents.');
+        return;
+    }
+
+    const sourcePack = packByName(sourcePackName);
+
+    if (!sourcePack || sourcePack.icons.length === 0) {
+        notifyError('Fusion impossible', 'Le pack source est vide ou introuvable.');
+        return;
+    }
+
+    await withLoading(button, `${icon('hourglass_empty')} Fusion...`, `${icon('call_merge')} Fusionner`, async () => {
+        try {
+            await invoke('add_icons_to_pack', {
+                packName: targetPackName,
+                iconIds: sourcePack.icons,
+            });
+
+            notifySuccess('Fusion terminée', `Les icônes du pack “${sourcePackName}” ont été ajoutées à “${targetPackName}”.`);
+            await renderPacksPage();
+        } catch (error) {
+            notifyError('Fusion des packs impossible', error);
+        }
+    });
+}
+
+function defaultPackExportFileName(packName) {
+    return `${packName.trim().replace(/[^\w\- ]+/g, '_').replace(/\s+/g, '_') || 'pack'}.streamDeckIconPack`;
+}
+
+async function choosePackExportPath(packName) {
+    const save = window.__TAURI__?.dialog?.save;
+
+    if (!save) {
+        throw new Error('Le dialogue de sauvegarde Tauri est indisponible.');
+    }
+
+    return await save({
+        title: 'Exporter le pack d’icônes Stream Deck',
+        defaultPath: defaultPackExportFileName(packName),
+        filters: [
+            {
+                name: 'Pack d’icônes Stream Deck',
+                extensions: ['streamDeckIconPack'],
+            },
+        ],
+    });
+}
+
+async function buildPack(packName, button) {
+    let outputPath = null;
+
+    try {
+        outputPath = await choosePackExportPath(packName);
+    } catch (error) {
+        notifyError('Sélection du fichier impossible', error);
+        return;
+    }
+
+    if (!outputPath) {
+        return;
+    }
+
+    await withLoading(button, `${icon('hourglass_empty')} Export...`, `${icon('archive')} Exporter`, async () => {
+        try {
+            const result = await invoke('build_pack_to_path', {
+                packName,
+                outputPath,
+            });
+
+            notifySuccess(
+                'Export Stream Deck terminé',
+                `Le pack “${result.pack_name}” contient ${result.icon_count} icône${result.icon_count > 1 ? 's' : ''}.\nFichier : ${result.output_path}`
+            );
+
+            if (el.packExportSummary) {
+                el.packExportSummary.textContent = `Dernier export : ${result.output_path}`;
+            }
+
+            await renderPacksPage();
+        } catch (error) {
+            notifyError('Export Stream Deck impossible', error);
+        }
+    });
+}
+
+async function exportSelectedPack(button) {
+    const packName = el.exportPackSelect.value;
+
+    if (!packName) {
+        notifyError('Export impossible', 'Choisis un pack à exporter.');
+        return;
+    }
+
+    await buildPack(packName, button);
+}
+
+async function deletePack(packName, button) {
+    const confirmed = await showConfirmDialog({
+        type: 'danger',
+        iconName: 'delete',
+        title: 'Supprimer ce pack ?',
+        message: `Tu es sur le point de supprimer le pack “${packName}”. Les icônes locales ne seront pas supprimées.`,
+        confirmText: 'Supprimer',
+        cancelText: 'Annuler',
+        danger: true,
+    });
+
+    if (!confirmed) return;
+
+    await withLoading(button, `${icon('hourglass_empty')} Suppression...`, `${icon('delete')} Supprimer`, async () => {
+        try {
+            await invoke('delete_pack', { name: packName });
+
+            if (currentPackName === packName) {
+                closePackEditor();
+            }
+
+            notifySuccess('Pack supprimé', `Le pack “${packName}” a été supprimé.`);
+            await renderPacksPage();
+        } catch (error) {
+            notifyError('Suppression du pack impossible', error);
+        }
+    });
+}
+
+async function saveSteamGridDbApiKeyFromSettings() {
+    const apiKey = el.settingsApiKeyInput.value.trim();
+
+    if (!apiKey) {
+        el.settingsApiKeyInput.focus();
+        notifyError('Clé SteamGridDB manquante', 'Colle une clé API SteamGridDB avant d’enregistrer.');
+        return;
+    }
+
+    await withLoading(el.settingsApiKeySave, `${icon('hourglass_empty')} Test...`, `${icon('save')} Enregistrer et tester`, async () => {
+        try {
+            await invoke('save_steamgriddb_api_key', { apiKey });
+
+            el.settingsApiKeyInput.value = '';
+
+            await refreshSavedSteamGridDbApiKey();
+            await refreshSteamGridDbApiStatus({ notify: true });
+        } catch (error) {
+            setSteamGridDbApiStatus('invalid', 'Clé SGDB invalide');
+            notifyError('Erreur SteamGridDB', error);
+        }
+    });
+}
+
+async function testSteamGridDbApiKeyFromSettings() {
+    await withLoading(
+        el.settingsApiKeyTest,
+        `${icon('hourglass_empty')} Test...`,
+        `${icon('science')} Tester la clé actuelle`,
+        () => refreshSteamGridDbApiStatus({ notify: true })
+    );
+}
+
+function activatePage(pageName) {
+    el.navItems.forEach(item => {
+        item.classList.toggle('active', item.dataset.page === pageName);
+    });
+
+    el.pages.forEach(page => {
+        page.classList.toggle('active', page.id === `${pageName}-page`);
+    });
+
+    if (pageName === 'packs') {
+        renderPacksPage();
+    }
+
+    if (pageName === 'settings') {
+        refreshSavedSteamGridDbApiKey();
+        refreshSteamGridDbApiStatus();
+    }
 }
 
 function getCurrentTauriWindow() {
@@ -825,45 +1478,23 @@ function registerWindowControls() {
         return;
     }
 
-    if (el.windowMinimize) {
-        el.windowMinimize.onclick = () => {
-            appWindow.minimize();
-        };
-    }
+    el.windowMinimize.onclick = () => appWindow.minimize();
+    el.windowMaximize.onclick = () => appWindow.toggleMaximize();
+    el.windowClose.onclick = () => appWindow.close();
 
-    if (el.windowMaximize) {
-        el.windowMaximize.onclick = async () => {
-            await appWindow.toggleMaximize();
-        };
-    }
+    el.windowTitlebar.addEventListener('mousedown', event => {
+        if (event.target.closest('.window-control-btn') || event.button !== 0) {
+            return;
+        }
 
-    if (el.windowClose) {
-        el.windowClose.onclick = () => {
-            appWindow.close();
-        };
-    }
+        appWindow.startDragging();
+    });
 
-    if (el.windowTitlebar) {
-        el.windowTitlebar.addEventListener('mousedown', event => {
-            const clickedControl = event.target.closest('.window-control-btn');
-
-            if (clickedControl || event.button !== 0) {
-                return;
-            }
-
-            appWindow.startDragging();
-        });
-
-        el.windowTitlebar.addEventListener('dblclick', event => {
-            const clickedControl = event.target.closest('.window-control-btn');
-
-            if (clickedControl) {
-                return;
-            }
-
+    el.windowTitlebar.addEventListener('dblclick', event => {
+        if (!event.target.closest('.window-control-btn')) {
             appWindow.toggleMaximize();
-        });
-    }
+        }
+    });
 }
 
 function registerEventListeners() {
@@ -886,6 +1517,31 @@ function registerEventListeners() {
 
     el.rescan.onclick = rescanLibrary;
     el.deleteSelection.onclick = deleteSelectedIcons;
+
+    if (el.createPack && el.newPackNameInput) {
+        el.createPack.onclick = () => createPackFromInput(el.newPackNameInput, el.createPack);
+        onEnter(el.newPackNameInput, () => createPackFromInput(el.newPackNameInput, el.createPack));
+    }
+
+    if (el.refreshPacks) {
+        el.refreshPacks.onclick = renderPacksPage;
+    }
+
+    el.packSubnavButtons.forEach(button => {
+        button.onclick = () => activatePackView(button.dataset.packView);
+    });
+
+    if (el.mergePacks) {
+        el.mergePacks.onclick = () => mergePacks(el.mergePacks);
+    }
+
+    if (el.exportPack) {
+        el.exportPack.onclick = () => exportSelectedPack(el.exportPack);
+    }
+
+    if (el.exportPackSelect) {
+        el.exportPackSelect.onchange = updatePackExportSummary;
+    }
 
     el.settingsApiKeySave.onclick = saveSteamGridDbApiKeyFromSettings;
     el.settingsApiKeyTest.onclick = testSteamGridDbApiKeyFromSettings;
@@ -912,9 +1568,7 @@ function registerEventListeners() {
     el.sgdbGrid.addEventListener('click', event => {
         const button = event.target.closest('.sgdb-download-btn');
 
-        if (!button) {
-            return;
-        }
+        if (!button) return;
 
         const entry = sgdbDownloadById.get(button.dataset.assetId);
 
@@ -924,118 +1578,16 @@ function registerEventListeners() {
     });
 }
 
-async function renderPacksPage() {
-    if (!el.packsPageContent) {
-        return;
-    }
-
-    try {
-        const packs = await invoke('get_packs');
-
-        setHtml(el.packsPageContent, `
-            <div class="settings-card">
-                <div class="settings-card-header">
-                    <span class="material-symbols-outlined settings-card-icon">inventory_2</span>
-                    <div>
-                        <h2>Mes Packs</h2>
-                        <p>Gère tes packs d’icônes Stream Deck.</p>
-                    </div>
-                </div>
-
-                ${
-            packs.length === 0
-                ? `<p class="settings-help">Aucun pack créé pour le moment.</p>`
-                : `<div class="pack-list">
-                            ${packs.map(pack => `
-                                <div class="pack-list-item">
-                                    <strong>${pack.name}</strong>
-                                    <span>${pack.icons.length} icône${pack.icons.length > 1 ? 's' : ''}</span>
-                                </div>
-                            `).join('')}
-                        </div>`
-        }
-            </div>
-        `);
-    } catch (error) {
-        console.error('Erreur lors du chargement des packs:', error);
-        notifyError('Chargement des packs impossible', error);
-    }
-}
-
-function activatePage(pageName) {
-    el.navItems.forEach(item => {
-        item.classList.toggle('active', item.dataset.page === pageName);
-    });
-
-    el.pages.forEach(page => {
-        page.classList.toggle('active', page.id === `${pageName}-page`);
-    });
-
-    if (pageName === 'packs') {
-        renderPacksPage();
-    }
-
-    if (pageName === 'settings') {
-        refreshSavedSteamGridDbApiKey();
-        refreshSteamGridDbApiStatus();
-    }
-}
-
-async function saveSteamGridDbApiKeyFromSettings() {
-    const apiKey = el.settingsApiKeyInput.value.trim();
-
-    if (!apiKey) {
-        el.settingsApiKeyInput.focus();
-        notifyError('Clé SteamGridDB manquante', 'Colle une clé API SteamGridDB avant d’enregistrer.');
-        return;
-    }
-
-    await withLoading(
-        el.settingsApiKeySave,
-        `${icon('hourglass_empty')} Test...`,
-        `${icon('save')} Enregistrer et tester`,
-        async () => {
-            try {
-                await invoke('save_steamgriddb_api_key', { apiKey });
-                el.settingsApiKeyInput.value = '';
-
-                await refreshSavedSteamGridDbApiKey();
-                await refreshSteamGridDbApiStatus({ notify: true });
-            } catch (error) {
-                console.error('Erreur SteamGridDB:', error);
-                setSteamGridDbApiStatus('invalid', 'Clé SGDB invalide');
-                notifyError('Erreur SteamGridDB', error);
-            }
-        }
-    );
-}
-
-async function testSteamGridDbApiKeyFromSettings() {
-    await withLoading(
-        el.settingsApiKeyTest,
-        `${icon('hourglass_empty')} Test...`,
-        `${icon('science')} Tester la clé actuelle`,
-        () => refreshSteamGridDbApiStatus({ notify: true })
-    );
-}
-
-function toggleSteamGridDbApiKeyVisibility() {
-    const isPassword = el.settingsApiKeyInput.type === 'password';
-
-    el.settingsApiKeyInput.type = isPassword ? 'text' : 'password';
-    el.settingsApiKeyToggleVisibility.innerHTML = isPassword
-        ? `${icon('visibility_off')} Masquer`
-        : `${icon('visibility')} Afficher`;
-}
-
 function init() {
     createNotificationSystem();
     registerWindowControls();
     registerEventListeners();
+
     activatePage('library');
     activateTab('search');
     resetSteamGridDbResults();
     updateDeleteSelectionButton();
+
     refreshSavedSteamGridDbApiKey();
     refreshSteamGridDbApiStatus();
     loadLibrary();
