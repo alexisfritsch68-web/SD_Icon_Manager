@@ -44,6 +44,13 @@ pub fn get_packs_file_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+pub fn get_icon_metadata_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut path = get_app_data_path(app)?;
+    path.push("icon_metadata.json");
+
+    Ok(path)
+}
+
 pub fn get_output_packs_path(app: &AppHandle) -> Result<PathBuf, String> {
     let mut path = get_app_data_path(app)?;
     path.push("Output_Packs");

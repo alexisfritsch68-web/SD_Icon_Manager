@@ -13,6 +13,14 @@ const DEFAULT_PACK_METADATA = {
     license: 'Generated icon pack. Icons remain the property of their respective owners.',
 };
 
+const SOURCE_LABELS = {
+    local: 'Local',
+    steamgriddb: 'SteamGridDB',
+    url: 'URL',
+};
+
+const SGDB_PAGE_LIMIT = 50;
+
 const el = {
     windowTitlebar: $('.window-titlebar'),
     windowMinimize: $('#window-minimize-btn'),
@@ -29,14 +37,28 @@ const el = {
 
     rescan: $('#rescan-library-btn'),
     deleteSelection: $('#delete-selection-btn'),
+    bulkEditSelection: $('#bulk-edit-selection-btn'),
     localIconSearch: $('#local-icon-search-input'),
+    localIconCategoryFilter: $('#local-icon-category-filter'),
+    localIconSourceFilter: $('#local-icon-source-filter'),
+    localIconFavoriteFilter: $('#local-icon-favorite-filter'),
 
+    sgdbTitle: $('#sgdb-results-title'),
+    sgdbGrid: $('#sgdb-results-grid'),
+    sgdbClear: $('#clear-sgdb-results-btn'),
+    sgdbMore: $('#sgdb-load-more-btn'),
     sgdbSearch: $('#sgdb-search-input'),
     sgdbSearchBtn: $('#sgdb-search-btn'),
     sgdbTitle: $('#sgdb-results-title'),
     sgdbGrid: $('#sgdb-results-grid'),
     sgdbClear: $('#clear-sgdb-results-btn'),
     sgdbMore: $('#sgdb-load-more-btn'),
+    sgdbStyleFilter: $('#sgdb-style-filter'),
+    sgdbSortFilter: $('#sgdb-sort-filter'),
+    sgdbOrderFilter: $('#sgdb-order-filter'),
+    sgdbNsfwFilter: $('#sgdb-nsfw-filter'),
+    sgdbHumorFilter: $('#sgdb-humor-filter'),
+    sgdbEpilepsyFilter: $('#sgdb-epilepsy-filter'),
 
     searchTab: $('#search-tab-btn'),
     localTab: $('#local-tab-btn'),
@@ -72,8 +94,6 @@ const el = {
     settingsApiKeyTest: $('#test-steamgriddb-api-key-btn'),
     settingsApiKeyToggleVisibility: $('#toggle-steamgriddb-api-key-visibility-btn'),
 };
-
-const SGDB_PAGE_LIMIT = 50;
 
 const selectedIconIds = new Set();
 const notifications = [];
@@ -113,9 +133,7 @@ function escapeHtml(value) {
 }
 
 function setHtml(target, html) {
-    if (target) {
-        target.innerHTML = html;
-    }
+    if (target) target.innerHTML = html;
 }
 
 function messageState(message, type = '') {
@@ -134,7 +152,6 @@ function emptyState(iconName, title, text) {
 
 function setButton(button, disabled, html) {
     if (!button) return;
-
     button.disabled = disabled;
     button.innerHTML = html;
 }
@@ -151,9 +168,7 @@ async function withLoading(button, loadingHtml, normalHtml, task) {
 
 function onEnter(input, callback) {
     input?.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-            callback();
-        }
+        if (event.key === 'Enter') callback();
     });
 }
 
@@ -161,6 +176,26 @@ function bindButtons(root, selector, handler) {
     $$(selector, root).forEach(button => {
         button.onclick = () => handler(button);
     });
+}
+
+function splitList(value) {
+    return String(value ?? '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function normalizeIconMetadata(iconData) {
+    return {
+        name: iconData.name || '',
+        categories: Array.isArray(iconData.categories) ? iconData.categories : [],
+        tags: Array.isArray(iconData.tags) ? iconData.tags : [],
+        source: iconData.source || 'local',
+        game_name: iconData.game_name || null,
+        style: iconData.style || null,
+        favorite: Boolean(iconData.favorite),
+        notes: iconData.notes || null,
+    };
 }
 
 function notify(type, title, message) {
@@ -225,9 +260,7 @@ function showDialog({
         $('.dialog-cancel-btn', overlay)?.addEventListener('click', () => close(false));
 
         overlay.addEventListener('click', event => {
-            if (event.target === overlay && cancelText) {
-                close(false);
-            }
+            if (event.target === overlay && cancelText) close(false);
         });
     });
 }
@@ -240,14 +273,144 @@ function showConfirmDialog(options) {
     });
 }
 
+function showIconEditDialog(iconData) {
+    return new Promise(resolve => {
+        const metadata = normalizeIconMetadata(iconData);
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+
+        overlay.innerHTML = `
+            <div class="app-dialog icon-edit-dialog" role="dialog" aria-modal="true">
+                <div class="app-dialog-icon">
+                    <span class="material-symbols-outlined">edit</span>
+                </div>
+
+                <div class="app-dialog-content">
+                    <h2>Éditer l’icône</h2>
+                    <p>Modifie le nom, les catégories, les tags et les informations de recherche.</p>
+
+                    <div class="icon-edit-preview" style="display:flex;align-items:center;gap:12px;margin:14px 0;">
+                        <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" style="width:64px;height:64px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.06);padding:6px;">
+                        <div>
+                            <strong>${escapeHtml(iconData.id)}</strong>
+                            <small style="display:block;opacity:.75;">Fichier source non renommé, seules les métadonnées changent.</small>
+                        </div>
+                    </div>
+
+                    <div class="pack-metadata-grid">
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Nom affiché</span>
+                            <input id="icon-edit-name-input" class="mui-input" type="text" value="${escapeHtml(metadata.name)}" placeholder="Nom de l’icône">
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Catégories</span>
+                            <input id="icon-edit-categories-input" class="mui-input" type="text" value="${escapeHtml(metadata.categories.join(', '))}" placeholder="Gaming, FPS, Action">
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Tags</span>
+                            <input id="icon-edit-tags-input" class="mui-input" type="text" value="${escapeHtml(metadata.tags.join(', '))}" placeholder="portal, valve, orange">
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Source</span>
+                            <select id="icon-edit-source-input" class="mui-input">
+                                <option value="local" ${metadata.source === 'local' ? 'selected' : ''}>Local</option>
+                                <option value="steamgriddb" ${metadata.source === 'steamgriddb' ? 'selected' : ''}>SteamGridDB</option>
+                                <option value="url" ${metadata.source === 'url' ? 'selected' : ''}>URL</option>
+                            </select>
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Jeu associé</span>
+                            <input id="icon-edit-game-input" class="mui-input" type="text" value="${escapeHtml(metadata.game_name || '')}" placeholder="Nom du jeu">
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Style</span>
+                            <input id="icon-edit-style-input" class="mui-input" type="text" value="${escapeHtml(metadata.style || '')}" placeholder="official, custom...">
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Favori</span>
+                            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+                                <input id="icon-edit-favorite-input" type="checkbox" ${metadata.favorite ? 'checked' : ''}>
+                                Marquer comme favori
+                            </label>
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Notes</span>
+                            <textarea id="icon-edit-notes-input" class="mui-input pack-metadata-textarea" rows="3" placeholder="Notes internes...">${escapeHtml(metadata.notes || '')}</textarea>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="app-dialog-actions">
+                    <button type="button" class="mui-btn outlined icon-edit-cancel-btn">Annuler</button>
+                    <button type="button" class="mui-btn primary icon-edit-save-btn">
+                        ${icon('save')}
+                        Enregistrer
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const close = result => {
+            overlay.classList.add('closing');
+
+            window.setTimeout(() => {
+                overlay.remove();
+                resolve(result);
+            }, 140);
+        };
+
+        document.body.appendChild(overlay);
+
+        $('#icon-edit-name-input', overlay)?.focus();
+
+        $('.icon-edit-cancel-btn', overlay).onclick = () => close(null);
+        $('.icon-edit-save-btn', overlay).onclick = () => {
+            const name = $('#icon-edit-name-input', overlay).value.trim();
+
+            if (!name) {
+                notifyError('Édition impossible', 'Le nom de l’icône est obligatoire.');
+                $('#icon-edit-name-input', overlay).focus();
+                return;
+            }
+
+            close({
+                name,
+                categories: splitList($('#icon-edit-categories-input', overlay).value),
+                tags: splitList($('#icon-edit-tags-input', overlay).value),
+                source: $('#icon-edit-source-input', overlay).value || 'local',
+                game_name: $('#icon-edit-game-input', overlay).value.trim() || null,
+                style: $('#icon-edit-style-input', overlay).value.trim() || null,
+                favorite: $('#icon-edit-favorite-input', overlay).checked,
+                notes: $('#icon-edit-notes-input', overlay).value.trim() || null,
+            });
+        };
+
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) close(null);
+        });
+
+        overlay.addEventListener('keydown', event => {
+            if (event.key === 'Escape') close(null);
+        });
+    });
+}
+
 function createNotificationSystem() {
     const container = document.createElement('div');
     container.className = 'notification-system';
 
     Object.assign(container.style, {
         position: 'fixed',
-        right: '16px',
-        bottom: '16px',
+        left: '14px',
+        right: 'auto',
+        bottom: '14px',
         zIndex: '9999',
     });
 
@@ -277,13 +440,14 @@ function createNotificationSystem() {
 
     Object.assign(notificationPanel.style, {
         position: 'absolute',
-        right: '0',
+        left: '0',
+        right: 'auto',
         bottom: '48px',
-        width: '360px',
-        maxHeight: '420px',
+        width: '220px',
+        maxHeight: '460px',
         overflow: 'auto',
         padding: '12px',
-        borderRadius: '12px',
+        borderRadius: '16px',
         background: '#1f1f1f',
         color: '#fff',
         boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
@@ -304,9 +468,7 @@ function createNotificationSystem() {
 }
 
 function renderNotifications() {
-    if (!notificationPanel || !notificationBadge) {
-        return;
-    }
+    if (!notificationPanel || !notificationBadge) return;
 
     notificationBadge.textContent = String(notifications.length);
     notificationBadge.hidden = notifications.length === 0;
@@ -360,6 +522,8 @@ async function refreshSavedSteamGridDbApiKey() {
     try {
         const apiKey = await invoke('get_steamgriddb_api_key');
 
+        if (!el.savedSettingsApiKeyInput || !el.savedSettingsApiKeyToggleVisibility) return;
+
         el.savedSettingsApiKeyInput.value = apiKey || '';
         el.savedSettingsApiKeyInput.placeholder = apiKey
             ? 'Clé SteamGridDB enregistrée'
@@ -381,9 +545,7 @@ async function refreshSteamGridDbApiStatus({ notify: shouldNotify = false } = {}
 
         setSteamGridDbApiStatus('valid', 'Clé SGDB valide');
 
-        if (shouldNotify) {
-            notifySuccess('Clé SteamGridDB', result);
-        }
+        if (shouldNotify) notifySuccess('Clé SteamGridDB', result);
     } catch (error) {
         const message = formatError(error);
 
@@ -392,9 +554,7 @@ async function refreshSteamGridDbApiStatus({ notify: shouldNotify = false } = {}
             message.includes('manquante') ? 'Clé SGDB absente' : 'Clé SGDB invalide'
         );
 
-        if (shouldNotify) {
-            notifyError('Clé SteamGridDB invalide', error);
-        }
+        if (shouldNotify) notifyError('Clé SteamGridDB invalide', error);
     }
 }
 
@@ -419,22 +579,35 @@ function toggleSteamGridDbApiKeyVisibility() {
 function activateTab(tabName) {
     const isSearch = tabName === 'search';
 
-    el.searchTab.classList.toggle('active', isSearch);
-    el.localTab.classList.toggle('active', !isSearch);
-    el.searchPanel.classList.toggle('active', isSearch);
-    el.localPanel.classList.toggle('active', !isSearch);
+    el.searchTab?.classList.toggle('active', isSearch);
+    el.localTab?.classList.toggle('active', !isSearch);
+    el.searchPanel?.classList.toggle('active', isSearch);
+    el.localPanel?.classList.toggle('active', !isSearch);
 }
 
 function updateCount(count) {
-    el.count.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
+    if (el.count) el.count.textContent = `${count} ${count > 1 ? 'icônes' : 'icône'}`;
 }
 
 function updateDeleteSelectionButton() {
     const count = selectedIconIds.size;
 
-    el.deleteSelection.hidden = false;
-    el.deleteSelection.disabled = count === 0;
-    el.deleteSelection.innerHTML = `${icon('delete')} Supprimer la sélection${count ? ` (${count})` : ''}`;
+    if (el.deleteSelection) {
+        el.deleteSelection.hidden = false;
+        el.deleteSelection.disabled = count === 0;
+        el.deleteSelection.innerHTML = `
+            ${icon('delete')}
+            <span class="action-label">Supprimer${count ? ` (${count})` : ''}</span>
+        `;
+    }
+
+    if (el.bulkEditSelection) {
+        el.bulkEditSelection.disabled = count === 0;
+        el.bulkEditSelection.innerHTML = `
+            ${icon('edit_note')}
+            <span class="action-label">Modifier${count ? ` (${count})` : ''}</span>
+        `;
+    }
 }
 
 function setLibraryLoading(message) {
@@ -446,11 +619,118 @@ function setLibraryError(error) {
     setHtml(el.grid, messageState('Une erreur est survenue. Consulte les notifications pour plus de détails.', 'error'));
 }
 
-function renderLocalIcons(icons = localIcons) {
+function iconMatchesLocalFilters(iconData) {
     const search = el.localIconSearch?.value.trim().toLowerCase() ?? '';
-    const filteredIcons = search
-        ? icons.filter(iconData => iconData.name.toLowerCase().includes(search))
-        : icons;
+    const category = el.localIconCategoryFilter?.value ?? '';
+    const source = el.localIconSourceFilter?.value ?? '';
+    const favoritesOnly = Boolean(el.localIconFavoriteFilter?.checked);
+
+    const searchableText = [
+        iconData.name,
+        iconData.id,
+        iconData.source,
+        iconData.game_name,
+        iconData.style,
+        iconData.notes,
+        ...(iconData.categories ?? []),
+        ...(iconData.tags ?? []),
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+    if (search && !searchableText.includes(search)) return false;
+    if (category && !(iconData.categories ?? []).includes(category)) return false;
+    if (source && iconData.source !== source) return false;
+    if (favoritesOnly && !iconData.favorite) return false;
+
+    return true;
+}
+
+function refreshLocalCategoryFilter() {
+    if (!el.localIconCategoryFilter) return;
+
+    const currentValue = el.localIconCategoryFilter.value;
+
+    const categories = localIcons
+        .flatMap(iconData => iconData.categories ?? [])
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+    const uniqueCategories = [...new Set(categories)];
+
+    el.localIconCategoryFilter.innerHTML = `
+        <option value="">Toutes les catégories</option>
+        ${uniqueCategories.map(category => `
+            <option value="${escapeHtml(category)}">${escapeHtml(category)}</option>
+        `).join('')}
+    `;
+
+    if (currentValue && uniqueCategories.includes(currentValue)) {
+        el.localIconCategoryFilter.value = currentValue;
+    }
+}
+
+function renderIconCardMetadata({
+                                    sourceLabel,
+                                    categories = [],
+                                    tags = [],
+                                    gameName = null,
+                                    style = null,
+                                    notes = null,
+                                    score = null,
+                                    showScore = false,
+                                }) {
+    const visibleCategories = categories.filter(Boolean).slice(0, 3);
+    const visibleTags = tags.filter(Boolean).slice(0, 4);
+
+    return `
+        <div class="icon-card-metadata">
+            <div class="icon-card-pills">
+                <span class="icon-pill source-pill">${escapeHtml(sourceLabel)}</span>
+
+                ${gameName ? `
+                    <span class="icon-pill">${escapeHtml(gameName)}</span>
+                ` : ''}
+
+                ${style ? `
+                    <span class="icon-pill">${escapeHtml(style)}</span>
+                ` : ''}
+
+                ${showScore && score !== null && score !== undefined ? `
+                    <span class="icon-pill">Score ${escapeHtml(score)}</span>
+                ` : ''}
+
+                ${visibleCategories.map(category => `
+                    <span class="icon-pill">${escapeHtml(category)}</span>
+                `).join('')}
+
+                ${categories.length > visibleCategories.length ? `
+                    <span class="icon-pill muted">+${categories.length - visibleCategories.length}</span>
+                ` : ''}
+            </div>
+
+            ${visibleTags.length ? `
+                <div class="icon-card-tags" title="${escapeHtml(tags.join(', '))}">
+                    ${visibleTags.map(tag => `
+                        <span>#${escapeHtml(tag)}</span>
+                    `).join('')}
+
+                    ${tags.length > visibleTags.length ? `
+                        <span>+${tags.length - visibleTags.length}</span>
+                    ` : ''}
+                </div>
+            ` : ''}
+
+            ${notes ? `
+                <p class="icon-card-note" title="${escapeHtml(notes)}">${escapeHtml(notes)}</p>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderLocalIcons(icons = localIcons) {
+    const filteredIcons = icons.filter(iconMatchesLocalFilters);
 
     if (icons.length === 0) {
         setHtml(el.grid, emptyState('folder_off', 'Iconothèque vide', 'Utilise le bouton "Fichiers locaux" pour ajouter des icônes.'));
@@ -458,16 +738,179 @@ function renderLocalIcons(icons = localIcons) {
     }
 
     if (filteredIcons.length === 0) {
-        setHtml(el.grid, emptyState('search_off', 'Aucune icône trouvée', `Aucune icône locale ne correspond à “${el.localIconSearch.value.trim()}”.`));
+        setHtml(el.grid, emptyState('search_off', 'Aucune icône trouvée', 'Aucune icône locale ne correspond aux filtres actifs.'));
         return;
     }
 
-    setHtml(el.grid, filteredIcons.map(iconData => `
-        <div class="icon-card" data-icon-id="${escapeHtml(iconData.id)}">
-            <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
-            <span>${escapeHtml(iconData.name)}</span>
-        </div>
-    `).join(''));
+    setHtml(el.grid, filteredIcons.map(iconData => {
+        const categories = iconData.categories ?? [];
+        const tags = iconData.tags ?? [];
+        const sourceLabel = SOURCE_LABELS[iconData.source] || iconData.source || 'Local';
+        const subtitle = iconData.game_name || iconData.style || sourceLabel;
+
+        return `
+            <article class="icon-card icon-card-horizontal local-icon-card" data-icon-id="${escapeHtml(iconData.id)}">
+                <div class="icon-card-image-pane">
+                    ${iconData.favorite ? `
+                        <span class="icon-card-favorite material-symbols-outlined" title="Favori">star</span>
+                    ` : ''}
+
+                    <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
+                </div>
+
+                <div class="icon-card-info-pane">
+                    <header class="icon-card-header">
+                        <div class="icon-card-title-block">
+                            <h3 title="${escapeHtml(iconData.name)}">${escapeHtml(iconData.name)}</h3>
+                            <p title="${escapeHtml(subtitle)}">${escapeHtml(subtitle)}</p>
+                        </div>
+
+                        <button
+                            class="mui-btn outlined icon-edit-btn icon-card-icon-button"
+                            type="button"
+                            data-icon-id="${escapeHtml(iconData.id)}"
+                            title="Éditer cette icône"
+                        >
+                            ${icon('edit')}
+                        </button>
+                    </header>
+
+                    ${renderIconCardMetadata({
+            sourceLabel,
+            categories,
+            tags,
+            gameName: iconData.game_name,
+            style: iconData.style,
+            notes: iconData.notes,
+        })}
+                </div>
+            </article>
+        `;
+    }).join(''));
+}
+
+function renderSteamGridDbResults(result, append = false) {
+    activateTab('search');
+
+    sgdb.gameName = result.game.name;
+    sgdb.page = result.page ?? 0;
+    sgdb.hasMore = Boolean(result.has_more);
+    el.sgdbTitle.textContent = `Résultats SteamGridDB — ${result.game.name}`;
+
+    if (!append) {
+        el.sgdbGrid.innerHTML = '';
+        sgdbDownloadById.clear();
+    }
+
+    if (!result.icons?.length) {
+        if (!append) {
+            setHtml(el.sgdbGrid, emptyState('image_not_supported', 'Aucune icône trouvée', 'SteamGridDB n’a retourné aucune icône compatible pour ce jeu.'));
+        }
+
+        el.sgdbMore.hidden = true;
+        return;
+    }
+
+    const cards = result.icons.map(asset => {
+        sgdbDownloadById.set(String(asset.id), {
+            asset,
+            gameName: result.game.name,
+        });
+
+        return `
+            <article class="icon-card icon-card-horizontal sgdb-result-card">
+                <div class="icon-card-image-pane">
+                    <img src="${escapeHtml(asset.thumb || asset.url)}" alt="Icône ${escapeHtml(result.game.name)}" loading="lazy">
+                </div>
+
+                <div class="icon-card-info-pane">
+                    <header class="icon-card-header">
+                        <div class="icon-card-title-block">
+                            <h3 title="${escapeHtml(result.game.name)}">${escapeHtml(result.game.name)}</h3>
+                            <p>${escapeHtml(asset.style || 'Style non précisé')}</p>
+                        </div>
+                    </header>
+
+                    ${renderIconCardMetadata({
+            sourceLabel: 'SteamGridDB',
+            categories: ['SteamGridDB'],
+            tags: [result.game.name, asset.style].filter(Boolean),
+            gameName: result.game.name,
+            style: asset.style,
+            score: asset.score,
+            showScore: true,
+        })}
+
+                    <div class="icon-card-actions">
+                        <button
+                            class="mui-btn primary sgdb-download-btn"
+                            data-asset-id="${escapeHtml(asset.id)}"
+                            title="Télécharger l’icône de ${escapeHtml(result.game.name)}"
+                        >
+                            ${icon('download')}
+                            Télécharger
+                        </button>
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    el.sgdbGrid.insertAdjacentHTML('beforeend', cards);
+    el.sgdbMore.hidden = !sgdb.hasMore;
+}
+
+function renderPackIconCard(iconData, packName, isInPack) {
+    const action = isInPack
+        ? { className: 'text danger remove-icon-from-pack-btn', iconName: 'remove', label: 'Retirer' }
+        : { className: 'primary add-icon-to-pack-btn', iconName: 'add', label: 'Ajouter' };
+
+    const categories = iconData.categories ?? [];
+    const tags = iconData.tags ?? [];
+    const sourceLabel = SOURCE_LABELS[iconData.source] || iconData.source || 'Local';
+    const subtitle = iconData.game_name || iconData.style || sourceLabel;
+
+    return `
+        <article class="icon-card icon-card-horizontal pack-icon-card ${isInPack ? 'in-pack' : ''}" data-icon-id="${escapeHtml(iconData.id)}">
+            <div class="icon-card-image-pane">
+                ${iconData.favorite ? `
+                    <span class="icon-card-favorite material-symbols-outlined" title="Favori">star</span>
+                ` : ''}
+
+                <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
+            </div>
+
+            <div class="icon-card-info-pane">
+                <header class="icon-card-header">
+                    <div class="icon-card-title-block">
+                        <h3 title="${escapeHtml(iconData.name)}">${escapeHtml(iconData.name)}</h3>
+                        <p title="${escapeHtml(subtitle)}">${escapeHtml(subtitle)}</p>
+                    </div>
+                </header>
+
+                ${renderIconCardMetadata({
+        sourceLabel,
+        categories,
+        tags,
+        gameName: iconData.game_name,
+        style: iconData.style,
+        notes: iconData.notes,
+    })}
+
+                <div class="icon-card-actions">
+                    <button
+                        class="mui-btn ${action.className}"
+                        type="button"
+                        data-pack-name="${escapeHtml(packName)}"
+                        data-icon-id="${escapeHtml(iconData.id)}"
+                    >
+                        ${icon(action.iconName)}
+                        ${escapeHtml(action.label)}
+                    </button>
+                </div>
+            </div>
+        </article>
+    `;
 }
 
 async function loadLibrary() {
@@ -479,6 +922,7 @@ async function loadLibrary() {
         localIcons = await invoke('get_library');
 
         updateCount(localIcons.length);
+        refreshLocalCategoryFilter();
         renderLocalIcons();
         updateDeleteSelectionButton();
 
@@ -490,6 +934,311 @@ async function loadLibrary() {
     }
 }
 
+async function editIconMetadata(iconId) {
+    const iconData = iconById(iconId);
+
+    if (!iconData) {
+        notifyError('Édition impossible', 'Icône introuvable.');
+        return;
+    }
+
+    const metadata = await showIconEditDialog(iconData);
+
+    if (!metadata) return;
+
+    try {
+        await invoke('update_icon_metadata', {
+            iconId,
+            metadata,
+        });
+
+        notifySuccess('Icône mise à jour', `L’icône “${metadata.name}” a été modifiée.`);
+        await loadLibrary();
+    } catch (error) {
+        notifyError('Modification de l’icône impossible', error);
+    }
+}
+
+function uniqueList(values) {
+    const result = [];
+
+    for (const value of values.map(item => String(item ?? '').trim()).filter(Boolean)) {
+        if (!result.some(existing => existing.toLowerCase() === value.toLowerCase())) {
+            result.push(value);
+        }
+    }
+
+    return result;
+}
+
+function removeFromList(source, valuesToRemove) {
+    const loweredValuesToRemove = valuesToRemove.map(value => value.toLowerCase());
+
+    return source.filter(value => !loweredValuesToRemove.includes(String(value).toLowerCase()));
+}
+
+function applyBulkListOperation(currentValues, incomingValues, operation) {
+    const current = Array.isArray(currentValues) ? currentValues : [];
+    const incoming = Array.isArray(incomingValues) ? incomingValues : [];
+
+    if (operation === 'replace') {
+        return uniqueList(incoming);
+    }
+
+    if (operation === 'remove') {
+        return uniqueList(removeFromList(current, incoming));
+    }
+
+    return uniqueList([...current, ...incoming]);
+}
+
+function showBulkMetadataDialog(count) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+
+        overlay.innerHTML = `
+            <div class="app-dialog icon-edit-dialog bulk-edit-dialog" role="dialog" aria-modal="true">
+                <div class="app-dialog-icon">
+                    <span class="material-symbols-outlined">edit_note</span>
+                </div>
+
+                <div class="app-dialog-content">
+                    <h2>Modifier ${escapeHtml(count)} icône${count > 1 ? 's' : ''}</h2>
+                    <p>
+                        Choisis comment appliquer les métadonnées aux icônes sélectionnées.
+                        Les champs vides sont ignorés, sauf pour les catégories/tags en mode remplacement.
+                    </p>
+
+                    <div class="pack-metadata-grid bulk-metadata-grid">
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Mode d’application des catégories et tags</span>
+                            <select id="bulk-operation-input" class="mui-input">
+                                <option value="add">Ajouter aux métadonnées existantes</option>
+                                <option value="replace">Remplacer les métadonnées existantes</option>
+                                <option value="remove">Retirer des métadonnées existantes</option>
+                            </select>
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Catégories</span>
+                            <input
+                                id="bulk-categories-input"
+                                class="mui-input"
+                                type="text"
+                                placeholder="Gaming, FPS, Action"
+                            >
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Tags</span>
+                            <input
+                                id="bulk-tags-input"
+                                class="mui-input"
+                                type="text"
+                                placeholder="portal, valve, orange"
+                            >
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Source</span>
+                            <select id="bulk-source-input" class="mui-input">
+                                <option value="">Ne pas modifier</option>
+                                <option value="local">Local</option>
+                                <option value="steamgriddb">SteamGridDB</option>
+                                <option value="url">URL</option>
+                            </select>
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Jeu associé</span>
+                            <input
+                                id="bulk-game-input"
+                                class="mui-input"
+                                type="text"
+                                placeholder="Ne pas modifier"
+                            >
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Style</span>
+                            <input
+                                id="bulk-style-input"
+                                class="mui-input"
+                                type="text"
+                                placeholder="Ne pas modifier"
+                            >
+                        </label>
+
+                        <label class="pack-metadata-field">
+                            <span>Favori</span>
+                            <select id="bulk-favorite-input" class="mui-input">
+                                <option value="">Ne pas modifier</option>
+                                <option value="true">Marquer comme favori</option>
+                                <option value="false">Retirer des favoris</option>
+                            </select>
+                        </label>
+
+                        <label class="pack-metadata-field pack-metadata-field-wide">
+                            <span>Notes</span>
+                            <textarea
+                                id="bulk-notes-input"
+                                class="mui-input pack-metadata-textarea"
+                                rows="3"
+                                placeholder="Ne pas modifier"
+                            ></textarea>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="app-dialog-actions">
+                    <button type="button" class="mui-btn outlined bulk-edit-cancel-btn">Annuler</button>
+                    <button type="button" class="mui-btn primary bulk-edit-save-btn">
+                        ${icon('save')}
+                        Appliquer
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const close = result => {
+            overlay.classList.add('closing');
+
+            window.setTimeout(() => {
+                overlay.remove();
+                resolve(result);
+            }, 140);
+        };
+
+        document.body.appendChild(overlay);
+
+        $('.bulk-edit-cancel-btn', overlay).onclick = () => close(null);
+
+        $('.bulk-edit-save-btn', overlay).onclick = () => {
+            close({
+                operation: $('#bulk-operation-input', overlay).value,
+                categories: splitList($('#bulk-categories-input', overlay).value),
+                tags: splitList($('#bulk-tags-input', overlay).value),
+                source: $('#bulk-source-input', overlay).value || null,
+                game_name: $('#bulk-game-input', overlay).value.trim() || null,
+                style: $('#bulk-style-input', overlay).value.trim() || null,
+                favorite: $('#bulk-favorite-input', overlay).value,
+                notes: $('#bulk-notes-input', overlay).value.trim() || null,
+            });
+        };
+
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) close(null);
+        });
+
+        overlay.addEventListener('keydown', event => {
+            if (event.key === 'Escape') close(null);
+        });
+    });
+}
+
+async function editSelectedIconsMetadata() {
+    const iconIds = [...selectedIconIds];
+
+    if (iconIds.length === 0) {
+        notifyError('Modification impossible', 'Aucune icône sélectionnée.');
+        return;
+    }
+
+    const changes = await showBulkMetadataDialog(iconIds.length);
+
+    if (!changes) {
+        return;
+    }
+
+    const hasChanges =
+        changes.categories.length > 0 ||
+        changes.tags.length > 0 ||
+        changes.source ||
+        changes.game_name ||
+        changes.style ||
+        changes.favorite !== '' ||
+        changes.notes;
+
+    if (!hasChanges) {
+        notifyError('Modification impossible', 'Aucune métadonnée à appliquer.');
+        return;
+    }
+
+    let updated = 0;
+    let failed = 0;
+
+    for (const iconId of iconIds) {
+        const iconData = iconById(iconId);
+
+        if (!iconData) {
+            failed += 1;
+            continue;
+        }
+
+        const metadata = normalizeIconMetadata(iconData);
+
+        metadata.categories = applyBulkListOperation(
+            metadata.categories,
+            changes.categories,
+            changes.operation
+        );
+
+        metadata.tags = applyBulkListOperation(
+            metadata.tags,
+            changes.tags,
+            changes.operation
+        );
+
+        if (changes.source) {
+            metadata.source = changes.source;
+        }
+
+        if (changes.game_name) {
+            metadata.game_name = changes.game_name;
+        }
+
+        if (changes.style) {
+            metadata.style = changes.style;
+        }
+
+        if (changes.favorite !== '') {
+            metadata.favorite = changes.favorite === 'true';
+        }
+
+        if (changes.notes) {
+            metadata.notes = changes.notes;
+        }
+
+        try {
+            await invoke('update_icon_metadata', {
+                iconId,
+                metadata,
+            });
+
+            updated += 1;
+        } catch (error) {
+            console.error(error);
+            failed += 1;
+        }
+    }
+
+    selectedIconIds.clear();
+
+    await loadLibrary();
+
+    if (failed > 0) {
+        notifyError(
+            'Modification partiellement terminée',
+            `${updated} icône${updated > 1 ? 's' : ''} modifiée${updated > 1 ? 's' : ''}, ${failed} échec${failed > 1 ? 's' : ''}.`
+        );
+    } else {
+        notifySuccess(
+            'Métadonnées mises à jour',
+            `${updated} icône${updated > 1 ? 's ont été modifiées' : ' a été modifiée'}.`
+        );
+    }
+}
 async function rescanLibrary() {
     await withLoading(el.rescan, icon('hourglass_empty'), icon('refresh'), async () => {
         activateTab('local');
@@ -527,9 +1276,7 @@ function readFileAsDataUrl(file) {
 async function importLocalFiles(files) {
     const imageFiles = [...files].filter(file => file.type.startsWith('image/'));
 
-    if (imageFiles.length === 0) {
-        return;
-    }
+    if (imageFiles.length === 0) return;
 
     activateTab('local');
     setLibraryLoading(`Import de ${imageFiles.length} fichier${imageFiles.length > 1 ? 's' : ''}...`);
@@ -568,9 +1315,7 @@ async function deleteSelectedIcons() {
         danger: true,
     });
 
-    if (!confirmed) {
-        return;
-    }
+    if (!confirmed) return;
 
     await withLoading(el.deleteSelection, `${icon('hourglass_empty')} Suppression...`, `${icon('delete')} Supprimer la sélection`, async () => {
         try {
@@ -626,49 +1371,16 @@ function setSgdbError(error) {
     el.sgdbMore.hidden = true;
 }
 
-function renderSteamGridDbResults(result, append = false) {
-    activateTab('search');
-
-    sgdb.gameName = result.game.name;
-    sgdb.page = result.page ?? 0;
-    sgdb.hasMore = Boolean(result.has_more);
-    el.sgdbTitle.textContent = `Résultats SteamGridDB — ${result.game.name}`;
-
-    if (!append) {
-        el.sgdbGrid.innerHTML = '';
-        sgdbDownloadById.clear();
-    }
-
-    if (!result.icons?.length) {
-        if (!append) {
-            setHtml(el.sgdbGrid, emptyState('image_not_supported', 'Aucune icône trouvée', 'SteamGridDB n’a retourné aucune icône compatible pour ce jeu.'));
-        }
-
-        el.sgdbMore.hidden = true;
-        return;
-    }
-
-    const cards = result.icons.map(asset => {
-        sgdbDownloadById.set(String(asset.id), {
-            asset,
-            gameName: result.game.name,
-        });
-
-        return `
-            <div class="icon-card sgdb-result-card">
-                <img src="${escapeHtml(asset.thumb || asset.url)}" alt="Icône ${escapeHtml(result.game.name)}" loading="lazy">
-                <span>${escapeHtml(result.game.name)}</span>
-                <button class="mui-btn primary sgdb-download-btn" data-asset-id="${escapeHtml(asset.id)}" title="Télécharger l’icône de ${escapeHtml(result.game.name)}">
-                    ${icon('download')}
-                </button>
-            </div>
-        `;
-    }).join('');
-
-    el.sgdbGrid.insertAdjacentHTML('beforeend', cards);
-    el.sgdbMore.hidden = !sgdb.hasMore;
+function getSteamGridDbFilters() {
+    return {
+        style: el.sgdbStyleFilter?.value || null,
+        sort: el.sgdbSortFilter?.value || 'score',
+        order: el.sgdbOrderFilter?.value || 'desc',
+        nsfw: Boolean(el.sgdbNsfwFilter?.checked),
+        humor: Boolean(el.sgdbHumorFilter?.checked),
+        epilepsy: Boolean(el.sgdbEpilepsyFilter?.checked),
+    };
 }
-
 async function searchSteamGridDbIcons() {
     const gameName = el.sgdbSearch.value.trim();
 
@@ -695,6 +1407,7 @@ async function searchSteamGridDbIcons() {
                 gameName,
                 page: 0,
                 limit: SGDB_PAGE_LIMIT,
+                filters: getSteamGridDbFilters(),
             });
 
             if (token === sgdb.token) {
@@ -709,9 +1422,7 @@ async function searchSteamGridDbIcons() {
 }
 
 async function loadMoreSteamGridDbIcons() {
-    if (!sgdb.gameName || !sgdb.hasMore || el.sgdbMore.disabled) {
-        return;
-    }
+    if (!sgdb.gameName || !sgdb.hasMore || el.sgdbMore.disabled) return;
 
     const token = sgdb.token;
 
@@ -721,6 +1432,7 @@ async function loadMoreSteamGridDbIcons() {
                 gameName: sgdb.gameName,
                 page: sgdb.page + 1,
                 limit: SGDB_PAGE_LIMIT,
+                filters: getSteamGridDbFilters(),
             });
 
             if (token === sgdb.token) {
@@ -742,24 +1454,64 @@ async function downloadSteamGridDbAsset(asset, gameName, button) {
     setButton(button, true, icon('hourglass_empty'));
 
     try {
-        await invoke('download_steamgriddb_icon_asset', {
+        const importedIcon = await invoke('download_steamgriddb_icon_asset', {
             assetId: asset.id,
             url: asset.url,
             gameName,
         });
+
+        if (importedIcon?.id) {
+            const style = asset.style || null;
+            const dimensions = asset.width && asset.height
+                ? `${asset.width}x${asset.height}`
+                : null;
+
+            const metadata = {
+                name: gameName,
+                categories: uniqueList([
+                    'SteamGridDB',
+                    gameName,
+                    style,
+                ].filter(Boolean)),
+                tags: uniqueList([
+                    'sgdb',
+                    'steamgriddb',
+                    gameName,
+                    style,
+                    dimensions,
+                    asset.score !== null && asset.score !== undefined ? `score-${asset.score}` : null,
+                    `asset-${asset.id}`,
+                ].filter(Boolean)),
+                source: 'steamgriddb',
+                game_name: gameName,
+                style,
+                favorite: false,
+                notes: [
+                    `SteamGridDB asset ${asset.id}`,
+                    style ? `Style : ${style}` : null,
+                    dimensions ? `Dimensions : ${dimensions}` : null,
+                    asset.score !== null && asset.score !== undefined ? `Score : ${asset.score}` : null,
+                    asset.url ? `URL : ${asset.url}` : null,
+                ].filter(Boolean).join(' — '),
+            };
+
+            await invoke('update_icon_metadata', {
+                iconId: importedIcon.id,
+                metadata,
+            });
+        }
 
         await loadLibrary();
 
         button.innerHTML = icon('check');
         button.title = 'Icône téléchargée';
 
-        notifySuccess('Icône téléchargée', `L’icône de ${gameName} a été ajoutée à l’iconothèque.`);
+        notifySuccess('Icône téléchargée', `L’icône de ${gameName} a été ajoutée avec ses métadonnées SGDB.`);
     } catch (error) {
         notifyError('Téléchargement SteamGridDB impossible', error);
         setButton(button, false, icon('download'));
     }
 }
-
 const packByName = name => packsCache.find(pack => pack.name === name) ?? null;
 const iconById = id => localIcons.find(iconData => iconData.id === id) ?? null;
 const packCount = pack => `${pack.icons.length} icône${pack.icons.length > 1 ? 's' : ''}`;
@@ -831,28 +1583,6 @@ function closePackEditor() {
     renderPackEditList();
 }
 
-function renderPackIconCard(iconData, packName, isInPack) {
-    const action = isInPack
-        ? { className: 'text danger remove-icon-from-pack-btn', iconName: 'remove', label: 'Retirer' }
-        : { className: 'primary add-icon-to-pack-btn', iconName: 'add', label: 'Ajouter' };
-
-    return `
-        <div class="icon-card pack-icon-card ${isInPack ? 'in-pack' : ''}" data-icon-id="${escapeHtml(iconData.id)}">
-            <img src="${escapeHtml(iconData.data_url)}" alt="${escapeHtml(iconData.name)}" loading="lazy">
-            <span>${escapeHtml(iconData.name)}</span>
-
-            <button
-                class="mui-btn ${action.className}"
-                type="button"
-                data-pack-name="${escapeHtml(packName)}"
-                data-icon-id="${escapeHtml(iconData.id)}"
-            >
-                ${icon(action.iconName)}
-                ${escapeHtml(action.label)}
-            </button>
-        </div>
-    `;
-}
 
 function renderPackMetadataForm(pack) {
     const metadata = packMetadata(pack);
@@ -869,87 +1599,42 @@ function renderPackMetadataForm(pack) {
             <div class="pack-metadata-grid">
                 <label class="pack-metadata-field">
                     <span>Nom du pack</span>
-                    <input
-                        id="pack-metadata-name-input"
-                        type="text"
-                        class="mui-input"
-                        placeholder="Nom du pack"
-                        value="${escapeHtml(metadata.name)}"
-                    />
+                    <input id="pack-metadata-name-input" type="text" class="mui-input" placeholder="Nom du pack" value="${escapeHtml(metadata.name)}" />
                 </label>
 
                 <label class="pack-metadata-field">
                     <span>Version</span>
-                    <input
-                        id="pack-metadata-version-input"
-                        type="text"
-                        class="mui-input"
-                        placeholder="1.0.0"
-                        value="${escapeHtml(metadata.version)}"
-                    />
+                    <input id="pack-metadata-version-input" type="text" class="mui-input" placeholder="1.0.0" value="${escapeHtml(metadata.version)}" />
                 </label>
 
                 <label class="pack-metadata-field">
                     <span>Auteur</span>
-                    <input
-                        id="pack-metadata-author-input"
-                        type="text"
-                        class="mui-input"
-                        placeholder="Auteur"
-                        value="${escapeHtml(metadata.author)}"
-                    />
+                    <input id="pack-metadata-author-input" type="text" class="mui-input" placeholder="Auteur" value="${escapeHtml(metadata.author)}" />
                 </label>
 
                 <label class="pack-metadata-field">
                     <span>Catégorie</span>
-                    <input
-                        id="pack-metadata-category-input"
-                        type="text"
-                        class="mui-input"
-                        placeholder="Gaming"
-                        value="${escapeHtml(metadata.category)}"
-                    />
+                    <input id="pack-metadata-category-input" type="text" class="mui-input" placeholder="Gaming" value="${escapeHtml(metadata.category)}" />
                 </label>
 
                 <label class="pack-metadata-field pack-metadata-field-wide">
                     <span>Tags</span>
-                    <input
-                        id="pack-metadata-tags-input"
-                        type="text"
-                        class="mui-input"
-                        placeholder="Tags séparés par des virgules"
-                        value="${escapeHtml(metadata.tags.join(', '))}"
-                    />
+                    <input id="pack-metadata-tags-input" type="text" class="mui-input" placeholder="Tags séparés par des virgules" value="${escapeHtml(metadata.tags.join(', '))}" />
                 </label>
 
                 <label class="pack-metadata-field pack-metadata-field-wide">
                     <span>Description</span>
-                    <textarea
-                        id="pack-metadata-description-input"
-                        class="mui-input pack-metadata-textarea"
-                        rows="3"
-                        placeholder="Description du pack"
-                    >${escapeHtml(metadata.description)}</textarea>
+                    <textarea id="pack-metadata-description-input" class="mui-input pack-metadata-textarea" rows="3" placeholder="Description du pack">${escapeHtml(metadata.description)}</textarea>
                 </label>
 
                 <label class="pack-metadata-field pack-metadata-field-wide">
                     <span>Licence</span>
-                    <textarea
-                        id="pack-metadata-license-input"
-                        class="mui-input pack-metadata-textarea"
-                        rows="4"
-                        placeholder="Texte de licence"
-                    >${escapeHtml(metadata.license)}</textarea>
+                    <textarea id="pack-metadata-license-input" class="mui-input pack-metadata-textarea" rows="4" placeholder="Texte de licence">${escapeHtml(metadata.license)}</textarea>
                 </label>
             </div>
 
             <div class="settings-actions pack-metadata-actions">
-                <button
-                    id="save-pack-metadata-btn"
-                    class="mui-btn primary"
-                    type="button"
-                    data-pack-name="${escapeHtml(pack.name)}"
-                >
+                <button id="save-pack-metadata-btn" class="mui-btn primary" type="button" data-pack-name="${escapeHtml(pack.name)}">
                     ${icon('save')}
                     Enregistrer les informations
                 </button>
@@ -1059,12 +1744,7 @@ function renderPackEditDetail() {
             </div>
 
             <div class="pack-editor-actions">
-                <button
-                    class="mui-btn primary build-pack-btn"
-                    type="button"
-                    data-pack-name="${escapeHtml(pack.name)}"
-                    ${pack.icons.length === 0 ? 'disabled' : ''}
-                >
+                <button class="mui-btn primary build-pack-btn" type="button" data-pack-name="${escapeHtml(pack.name)}" ${pack.icons.length === 0 ? 'disabled' : ''}>
                     ${icon('archive')}
                     Exporter Stream Deck
                 </button>
@@ -1145,9 +1825,7 @@ function renderPackExportView() {
 }
 
 function updatePackExportSummary() {
-    if (!el.packExportSummary) {
-        return;
-    }
+    if (!el.packExportSummary) return;
 
     const packName = el.exportPackSelect?.value;
     const pack = packName ? packByName(packName) : null;
@@ -1225,38 +1903,15 @@ async function updatePackMetadata(packName, button) {
         license: $('#pack-metadata-license-input', el.packEditDetailContent).value.trim(),
     };
 
-    if (!metadata.name) {
-        notifyError('Informations invalides', 'Le nom du pack est obligatoire.');
-        return;
-    }
-
-    if (!metadata.author) {
-        notifyError('Informations invalides', 'L’auteur du pack est obligatoire.');
-        return;
-    }
-
-    if (!metadata.version) {
-        notifyError('Informations invalides', 'La version du pack est obligatoire.');
-        return;
-    }
-
-    if (!metadata.description) {
-        notifyError('Informations invalides', 'La description du pack est obligatoire.');
-        return;
-    }
-
-    if (!metadata.category) {
-        notifyError('Informations invalides', 'La catégorie du pack est obligatoire.');
-        return;
-    }
+    if (!metadata.name) return notifyError('Informations invalides', 'Le nom du pack est obligatoire.');
+    if (!metadata.author) return notifyError('Informations invalides', 'L’auteur du pack est obligatoire.');
+    if (!metadata.version) return notifyError('Informations invalides', 'La version du pack est obligatoire.');
+    if (!metadata.description) return notifyError('Informations invalides', 'La description du pack est obligatoire.');
+    if (!metadata.category) return notifyError('Informations invalides', 'La catégorie du pack est obligatoire.');
+    if (!metadata.license) return notifyError('Informations invalides', 'La licence du pack est obligatoire.');
 
     if (metadata.tags.length === 0) {
         metadata.tags = [metadata.category];
-    }
-
-    if (!metadata.license) {
-        notifyError('Informations invalides', 'La licence du pack est obligatoire.');
-        return;
     }
 
     await withLoading(button, `${icon('hourglass_empty')} Enregistrement...`, `${icon('save')} Enregistrer les informations`, async () => {
@@ -1345,9 +2000,7 @@ async function buildPack(packName, button) {
         return;
     }
 
-    if (!outputPath) {
-        return;
-    }
+    if (!outputPath) return;
 
     await withLoading(button, `${icon('hourglass_empty')} Export...`, `${icon('archive')} Exporter`, async () => {
         try {
@@ -1478,12 +2131,31 @@ function registerWindowControls() {
         return;
     }
 
-    el.windowMinimize.onclick = () => appWindow.minimize();
-    el.windowMaximize.onclick = () => appWindow.toggleMaximize();
-    el.windowClose.onclick = () => appWindow.close();
+    el.windowMinimize.onclick = event => {
+        event.stopPropagation();
+        appWindow.minimize();
+    };
+
+    el.windowMaximize.onclick = event => {
+        event.stopPropagation();
+        appWindow.toggleMaximize();
+    };
+
+    el.windowClose.onclick = event => {
+        event.stopPropagation();
+        appWindow.close();
+    };
 
     el.windowTitlebar.addEventListener('mousedown', event => {
-        if (event.target.closest('.window-control-btn') || event.button !== 0) {
+        if (event.button !== 0) {
+            return;
+        }
+
+        if (event.detail >= 2) {
+            return;
+        }
+
+        if (event.target.closest('.window-control-btn')) {
             return;
         }
 
@@ -1491,10 +2163,25 @@ function registerWindowControls() {
     });
 
     el.windowTitlebar.addEventListener('dblclick', event => {
-        if (!event.target.closest('.window-control-btn')) {
-            appWindow.toggleMaximize();
+        if (event.button !== 0) {
+            return;
         }
+
+        if (event.target.closest('.window-control-btn')) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        appWindow.toggleMaximize();
     });
+}
+
+function resetLocalFiltersAndRender() {
+    selectedIconIds.clear();
+    renderLocalIcons();
+    updateDeleteSelectionButton();
 }
 
 function registerEventListeners() {
@@ -1512,11 +2199,30 @@ function registerEventListeners() {
     el.sgdbMore.onclick = loadMoreSteamGridDbIcons;
     el.sgdbClear.onclick = resetSteamGridDbResults;
 
+    [
+        el.sgdbStyleFilter,
+        el.sgdbSortFilter,
+        el.sgdbOrderFilter,
+        el.sgdbNsfwFilter,
+        el.sgdbHumorFilter,
+        el.sgdbEpilepsyFilter,
+    ].forEach(filter => {
+        filter?.addEventListener('change', () => {
+            if (el.sgdbSearch?.value.trim()) {
+                searchSteamGridDbIcons();
+            }
+        });
+    });
+
     el.searchTab.onclick = () => activateTab('search');
     el.localTab.onclick = () => activateTab('local');
 
     el.rescan.onclick = rescanLibrary;
     el.deleteSelection.onclick = deleteSelectedIcons;
+
+    if (el.bulkEditSelection) {
+        el.bulkEditSelection.onclick = editSelectedIconsMetadata;
+    }
 
     if (el.createPack && el.newPackNameInput) {
         el.createPack.onclick = () => createPackFromInput(el.newPackNameInput, el.createPack);
@@ -1548,16 +2254,24 @@ function registerEventListeners() {
     el.savedSettingsApiKeyToggleVisibility.onclick = toggleSavedSteamGridDbApiKeyVisibility;
     el.settingsApiKeyToggleVisibility.onclick = toggleSteamGridDbApiKeyVisibility;
 
-    el.localIconSearch.addEventListener('input', () => {
-        selectedIconIds.clear();
-        renderLocalIcons();
-        updateDeleteSelectionButton();
-    });
+    el.localIconSearch?.addEventListener('input', resetLocalFiltersAndRender);
+    el.localIconCategoryFilter?.addEventListener('change', resetLocalFiltersAndRender);
+    el.localIconSourceFilter?.addEventListener('change', resetLocalFiltersAndRender);
+    el.localIconFavoriteFilter?.addEventListener('change', resetLocalFiltersAndRender);
 
     onEnter(el.sgdbSearch, searchSteamGridDbIcons);
     onEnter(el.settingsApiKeyInput, saveSteamGridDbApiKeyFromSettings);
 
     el.grid.addEventListener('click', event => {
+        const editButton = event.target.closest('.icon-edit-btn');
+
+        if (editButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            editIconMetadata(editButton.dataset.iconId);
+            return;
+        }
+
         const card = event.target.closest('.icon-card[data-icon-id]');
 
         if (card) {

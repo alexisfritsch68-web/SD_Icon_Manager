@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>SD Icon Manager</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
-    <link rel="stylesheet" href="style.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+          rel="stylesheet">
+    <link rel="stylesheet" href="style.css"/>
 </head>
 
 <body>
@@ -27,7 +28,8 @@
             <span class="material-symbols-outlined">remove</span>
         </button>
 
-        <button id="window-maximize-btn" class="window-control-btn" type="button" title="Agrandir / restaurer" aria-label="Agrandir ou restaurer">
+        <button id="window-maximize-btn" class="window-control-btn" type="button" title="Agrandir / restaurer"
+                aria-label="Agrandir ou restaurer">
             <span class="material-symbols-outlined">crop_square</span>
         </button>
 
@@ -79,7 +81,7 @@
                         <span id="steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
                     </div>
 
-                    <input id="file-input" type="file" accept="image/*" multiple hidden />
+                    <input id="file-input" type="file" accept="image/*" multiple hidden/>
                 </div>
             </header>
 
@@ -109,6 +111,42 @@
                             <span class="material-symbols-outlined btn-icon">search</span>
                             Rechercher
                         </button>
+                    </div>
+
+                    <div class="sgdb-filter-bar" aria-label="Filtres SteamGridDB">
+                        <select id="sgdb-style-filter" class="mui-input sgdb-filter-select" title="Style">
+                            <option value="">Tous les styles</option>
+                            <option value="official">Official</option>
+                            <option value="material">Material</option>
+                            <option value="no_logo">No logo</option>
+                            <option value="white_logo">White logo</option>
+                            <option value="blurb">Blurb</option>
+                        </select>
+
+                        <select id="sgdb-sort-filter" class="mui-input sgdb-filter-select" title="Tri">
+                            <option value="score">Score</option>
+                            <option value="age">Âge</option>
+                        </select>
+
+                        <select id="sgdb-order-filter" class="mui-input sgdb-filter-select" title="Ordre">
+                            <option value="desc">Décroissant</option>
+                            <option value="asc">Croissant</option>
+                        </select>
+
+                        <label class="sgdb-filter-toggle" title="Inclure NSFW">
+                            <input id="sgdb-nsfw-filter" type="checkbox" />
+                            <span class="material-symbols-outlined">visibility</span>
+                        </label>
+
+                        <label class="sgdb-filter-toggle" title="Inclure humour">
+                            <input id="sgdb-humor-filter" type="checkbox" />
+                            <span class="material-symbols-outlined">sentiment_very_satisfied</span>
+                        </label>
+
+                        <label class="sgdb-filter-toggle" title="Inclure contenu sensible à l’épilepsie">
+                            <input id="sgdb-epilepsy-filter" type="checkbox" />
+                            <span class="material-symbols-outlined">emergency_home</span>
+                        </label>
                     </div>
 
                     <section id="sgdb-results-section" class="sgdb-results-section">
@@ -159,7 +197,8 @@
                                         <small>Total enregistré</small>
                                     </div>
 
-                                    <button id="rescan-library-btn" class="mui-btn outlined icon-only-btn" type="button" title="Rescanner l’iconothèque" aria-label="Rescanner l’iconothèque">
+                                    <button id="rescan-library-btn" class="mui-btn outlined icon-only-btn" type="button"
+                                            title="Rescanner l’iconothèque" aria-label="Rescanner l’iconothèque">
                                         <span class="material-symbols-outlined btn-icon">refresh</span>
                                     </button>
                                 </div>
@@ -171,29 +210,54 @@
                                 <span class="material-symbols-outlined">touch_app</span>
                                 <div>
                                     <strong>Sélection multiple</strong>
-                                    <span>Clique sur les icônes pour les sélectionner ou les désélectionner.</span>
+                                    <span>Clique sur une carte pour sélectionner. Utilise les filtres pour affiner l’iconothèque.</span>
                                 </div>
                             </div>
 
-                            <div class="library-local-search">
-                                <span class="material-symbols-outlined">search</span>
-                                <input
-                                        id="local-icon-search-input"
-                                        type="text"
-                                        placeholder="Rechercher une icône locale..."
-                                        autocomplete="off"
-                                />
+                            <div class="library-filter-bar" aria-label="Filtres de l’iconothèque">
+                                <div class="library-filter-search">
+                                    <span class="material-symbols-outlined">search</span>
+                                    <input
+                                            id="local-icon-search-input"
+                                            type="text"
+                                            placeholder="Rechercher..."
+                                            autocomplete="off"
+                                    />
+                                </div>
+
+                                <div class="library-filter-controls">
+                                    <select id="local-icon-category-filter" class="mui-input library-filter-select" title="Catégorie">
+                                        <option value="">Catégories</option>
+                                    </select>
+
+                                    <select id="local-icon-source-filter" class="mui-input library-filter-select" title="Source">
+                                        <option value="">Sources</option>
+                                        <option value="local">Local</option>
+                                        <option value="steamgriddb">SGDB</option>
+                                        <option value="url">URL</option>
+                                    </select>
+
+                                    <label class="library-filter-favorite" title="Favoris uniquement" aria-label="Favoris uniquement">
+                                        <input id="local-icon-favorite-filter" type="checkbox" />
+                                        <span class="material-symbols-outlined">star</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <div class="grid-actions">
-                                <button id="local-files-btn" class="mui-btn outlined" type="button">
+                                <button id="local-files-btn" class="mui-btn outlined compact-action-btn" type="button" title="Importer des fichiers locaux">
                                     <span class="material-symbols-outlined btn-icon">add</span>
-                                    Fichiers locaux
+                                    <span class="action-label">Importer</span>
                                 </button>
 
-                                <button id="delete-selection-btn" class="mui-btn text danger" type="button">
+                                <button id="bulk-edit-selection-btn" class="mui-btn outlined compact-action-btn" type="button" disabled title="Modifier les icônes sélectionnées">
+                                    <span class="material-symbols-outlined btn-icon">edit_note</span>
+                                    <span class="action-label">Modifier</span>
+                                </button>
+
+                                <button id="delete-selection-btn" class="mui-btn text danger compact-action-btn" type="button" title="Supprimer les icônes sélectionnées">
                                     <span class="material-symbols-outlined btn-icon">delete</span>
-                                    Supprimer la sélection
+                                    <span class="action-label">Supprimer</span>
                                 </button>
                             </div>
                         </section>
@@ -258,7 +322,7 @@
 
                             <button id="create-pack-btn" class="mui-btn primary" type="button">
                                 <span class="material-symbols-outlined btn-icon">add_box</span>
-                                Créer le pack
+                                Créer
                             </button>
                         </div>
 
@@ -273,7 +337,8 @@
                                     <p>Sélectionne un pack pour ouvrir sa page dédiée.</p>
                                 </div>
 
-                                <button id="refresh-packs-btn" class="mui-btn outlined icon-only-btn" type="button" title="Actualiser les packs" aria-label="Actualiser les packs">
+                                <button id="refresh-packs-btn" class="mui-btn outlined icon-only-btn" type="button"
+                                        title="Actualiser les packs" aria-label="Actualiser les packs">
                                     <span class="material-symbols-outlined btn-icon">refresh</span>
                                 </button>
                             </div>
@@ -320,7 +385,8 @@
                         <div class="pack-section-header">
                             <div>
                                 <h3>Exporter pour Stream Deck</h3>
-                                <p>Génère un fichier <strong>.streamDeckIconPack</strong> prêt à importer dans Stream Deck.</p>
+                                <p>Génère un fichier <strong>.streamDeckIconPack</strong> prêt à importer dans Stream
+                                    Deck.</p>
                             </div>
                         </div>
 
@@ -355,7 +421,8 @@
                     </div>
 
                     <div class="settings-status-row">
-                        <div id="settings-steamgriddb-api-status" class="api-status unknown" title="État de la clé SteamGridDB">
+                        <div id="settings-steamgriddb-api-status" class="api-status unknown"
+                             title="État de la clé SteamGridDB">
                             <span class="api-status-dot"></span>
                             <span id="settings-steamgriddb-api-status-label">Clé SGDB non vérifiée</span>
                         </div>
@@ -372,7 +439,8 @@
                                 readonly
                         />
 
-                        <button id="toggle-saved-steamgriddb-api-key-visibility-btn" class="mui-btn outlined" type="button">
+                        <button id="toggle-saved-steamgriddb-api-key-visibility-btn" class="mui-btn outlined"
+                                type="button">
                             <span class="material-symbols-outlined btn-icon">visibility</span>
                             Afficher
                         </button>

@@ -10,11 +10,20 @@ use crate::commands::library::{save_image_bytes_as_icon, IconEntry};
 use crate::commands::storage::get_steamgriddb_config_path;
 
 const STEAMGRIDDB_API_BASE_URL: &str = "https://www.steamgriddb.com/api/v2";
-const TARGET_ICON_SIZE: u32 = 144;
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct SteamGridDbConfig {
     pub api_key: String,
+}
+
+#[derive(Deserialize, Default)]
+pub struct SteamGridDbIconFilters {
+    pub style: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+    pub nsfw: Option<bool>,
+    pub humor: Option<bool>,
+    pub epilepsy: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -134,10 +143,7 @@ fn steamgriddb_api_client(api_key: &str) -> Result<reqwest::blocking::Client, St
     );
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
-    headers.insert(
-        USER_AGENT,
-        HeaderValue::from_static("SD Icon Manager"),
-    );
+    headers.insert(USER_AGENT, HeaderValue::from_static("SD Icon Manager"));
 
     reqwest::blocking::Client::builder()
         .default_headers(headers)
@@ -166,6 +172,7 @@ fn steamgriddb_search_path(term: &str) -> String {
 
     format!("/search/autocomplete/{encoded_term}")
 }
+
 fn search_steamgriddb_games(
     client: &reqwest::blocking::Client,
     term: &str,
@@ -199,26 +206,65 @@ fn search_steamgriddb_games(
     ensure_steamgriddb_success(payload, "recherche de jeu")
 }
 
+fn sanitize_filter_value(value: Option<&String>) -> Option<String> {
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn valid_sort(value: Option<&String>) -> String {
+    match value.map(String::as_str).map(str::trim) {
+        Some("age") => "age".to_string(),
+        Some("score") => "score".to_string(),
+        _ => "score".to_string(),
+    }
+}
+
+fn valid_order(value: Option<&String>) -> String {
+    match value.map(String::as_str).map(str::trim) {
+        Some("asc") => "asc".to_string(),
+        Some("desc") => "desc".to_string(),
+        _ => "desc".to_string(),
+    }
+}
+
 fn fetch_icons_for_game_page(
     client: &reqwest::blocking::Client,
     game_id: u64,
     page: u32,
     limit: u32,
+    filters: &SteamGridDbIconFilters,
 ) -> Result<Vec<SteamGridDbAssetResponse>, String> {
     let endpoint = format!("/icons/game/{game_id}");
     let page = page.min(100);
     let limit = limit.clamp(1, 50);
 
+    let nsfw = filters.nsfw.unwrap_or(false).to_string();
+    let humor = filters.humor.unwrap_or(false).to_string();
+    let epilepsy = filters.epilepsy.unwrap_or(false).to_string();
+    let sort = valid_sort(filters.sort.as_ref());
+    let order = valid_order(filters.order.as_ref());
+
+    let mut query = vec![
+        ("types".to_string(), "static".to_string()),
+        ("nsfw".to_string(), nsfw),
+        ("humor".to_string(), humor),
+        ("epilepsy".to_string(), epilepsy),
+        ("sort".to_string(), sort),
+        ("order".to_string(), order),
+        ("limit".to_string(), limit.to_string()),
+        ("page".to_string(), page.to_string()),
+    ];
+
+    if let Some(style) = sanitize_filter_value(filters.style.as_ref()) {
+        query.push(("styles".to_string(), style));
+    }
+
     let response = client
         .get(format!("{STEAMGRIDDB_API_BASE_URL}{endpoint}"))
-        .query(&[
-            ("types", "static"),
-            ("nsfw", "false"),
-            ("humor", "false"),
-            ("epilepsy", "false"),
-            ("limit", &limit.to_string()),
-            ("page", &page.to_string()),
-        ])
+        .query(&query)
         .send()
         .map_err(|error| format!("Récupération des icônes SteamGridDB impossible : {error}"))?;
 
@@ -284,7 +330,6 @@ fn game_response_to_game(game: SteamGridDbGameResponse) -> SteamGridDbGame {
     }
 }
 
-
 #[tauri::command]
 pub fn save_steamgriddb_api_key(app: AppHandle, api_key: String) -> Result<(), String> {
     write_steamgriddb_config(
@@ -313,8 +358,6 @@ fn sanitize_download_name(value: &str) -> String {
         .map(|character| {
             if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
                 character
-            } else if character.is_whitespace() || character == ':' || character == '/' || character == '\\' {
-                '_'
             } else {
                 '_'
             }
@@ -339,6 +382,7 @@ fn file_name_from_game_name(game_name: &str, asset_id: u64) -> String {
 
     format!("{clean_game_name}_sgdb_{asset_id}.png")
 }
+
 #[tauri::command]
 pub fn test_steamgriddb_api_key(app: AppHandle) -> Result<String, String> {
     let api_key = steamgriddb_api_key(&app)?;
@@ -379,19 +423,12 @@ pub fn test_steamgriddb_api_key(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn search_steamgriddb_icons(
-    app: AppHandle,
-    game_name: String,
-) -> Result<SteamGridDbIconPageResult, String> {
-    search_steamgriddb_icon_page(app, game_name, 0, 50)
-}
-
-#[tauri::command]
 pub fn search_steamgriddb_icon_page(
     app: AppHandle,
     game_name: String,
     page: u32,
     limit: u32,
+    filters: Option<SteamGridDbIconFilters>,
 ) -> Result<SteamGridDbIconPageResult, String> {
     let game_name = game_name.trim();
 
@@ -413,9 +450,13 @@ pub fn search_steamgriddb_icon_page(
 
     let game_id = game.id;
     let game = game_response_to_game(game);
+    let filters = filters.unwrap_or_default();
 
-    let mut icons = fetch_icons_for_game_page(&client, game_id, page, limit)?;
-    sort_icons_by_144_preference(&mut icons);
+    let mut icons = fetch_icons_for_game_page(&client, game_id, page, limit, &filters)?;
+
+    if filters.sort.as_deref().unwrap_or("score") == "score" && filters.order.as_deref().unwrap_or("desc") == "desc" {
+        sort_icons_by_144_preference(&mut icons);
+    }
 
     let has_more = icons.len() == limit as usize;
 
@@ -429,6 +470,15 @@ pub fn search_steamgriddb_icon_page(
         limit,
         has_more,
     })
+}
+
+
+#[tauri::command]
+pub fn search_steamgriddb_icons(
+    app: AppHandle,
+    game_name: String,
+) -> Result<SteamGridDbIconPageResult, String> {
+    search_steamgriddb_icon_page(app, game_name, 0, 50, None)
 }
 
 #[tauri::command]
@@ -495,13 +545,12 @@ fn extract_icon_urls_from_collection_html(html: &str) -> Result<Vec<String>, Str
     let regex = Regex::new(
         r#"https?://(?:cdn\d*\.)?steamgriddb\.com/[^"'\s<>\\]+?\.(?:png|jpg|jpeg|webp)"#,
     )
-    .map_err(|error| format!("Regex SteamGridDB invalide : {error}"))?;
+        .map_err(|error| format!("Regex SteamGridDB invalide : {error}"))?;
 
     let mut urls = Vec::new();
 
     for match_ in regex.find_iter(html) {
         let url = decode_html_entities(match_.as_str());
-
         let lower_url = url.to_lowercase();
 
         let looks_like_icon = lower_url.contains("/icon/")

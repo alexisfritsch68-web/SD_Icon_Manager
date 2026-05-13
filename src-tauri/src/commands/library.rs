@@ -1,20 +1,40 @@
-use base64::{engine::general_purpose, Engine as _};
-use image::{imageops::FilterType, DynamicImage, GenericImageView, RgbaImage};
-use serde::Serialize;
+use base64::{Engine as _, engine::general_purpose};
+use image::{DynamicImage, GenericImageView, RgbaImage, imageops::FilterType};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
 
-use crate::commands::storage::{get_library_path, path_from_icon_id};
+use crate::commands::storage::{get_icon_metadata_path, get_library_path, path_from_icon_id};
 
 const ICON_SIZE: u32 = 144;
 const MIN_DIMENSION: u32 = 72;
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct IconMetadata {
+    pub name: Option<String>,
+    pub categories: Vec<String>,
+    pub tags: Vec<String>,
+    pub source: Option<String>,
+    pub game_name: Option<String>,
+    pub style: Option<String>,
+    pub favorite: bool,
+    pub notes: Option<String>,
+}
 
 #[derive(Serialize)]
 pub struct IconEntry {
     pub id: String,
     pub name: String,
     pub data_url: String,
+    pub categories: Vec<String>,
+    pub tags: Vec<String>,
+    pub source: Option<String>,
+    pub game_name: Option<String>,
+    pub style: Option<String>,
+    pub favorite: bool,
+    pub notes: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -72,9 +92,8 @@ fn unique_png_path(library_path: &Path, original_name: &str) -> std::path::PathB
 }
 
 fn is_supported_icon_file(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| {
-        extension.to_string_lossy().eq_ignore_ascii_case("png")
-    })
+    path.extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("png"))
 }
 
 fn normalize_icon_image(image: DynamicImage) -> Result<DynamicImage, String> {
@@ -101,11 +120,7 @@ fn normalize_icon_image(image: DynamicImage) -> Result<DynamicImage, String> {
         .resize_exact(resized_width, resized_height, FilterType::Lanczos3)
         .to_rgba8();
 
-    let mut canvas = RgbaImage::from_pixel(
-        ICON_SIZE,
-        ICON_SIZE,
-        image::Rgba([0, 0, 0, 0]),
-    );
+    let mut canvas = RgbaImage::from_pixel(ICON_SIZE, ICON_SIZE, image::Rgba([0, 0, 0, 0]));
 
     let x = ((ICON_SIZE - resized_width) / 2) as i64;
     let y = ((ICON_SIZE - resized_height) / 2) as i64;
@@ -138,9 +153,45 @@ fn normalize_icon_file(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-fn icon_entry_from_path(path: &Path) -> Result<IconEntry, String> {
-    let bytes = fs::read(path)
-        .map_err(|error| format!("Impossible de lire l'icône : {error}"))?;
+fn read_icon_metadata(app: &AppHandle) -> Result<HashMap<String, IconMetadata>, String> {
+    let metadata_path = get_icon_metadata_path(app)?;
+
+    if !metadata_path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let content = fs::read_to_string(&metadata_path)
+        .map_err(|error| format!("Impossible de lire les métadonnées des icônes : {error}"))?;
+
+    serde_json::from_str(&content)
+        .map_err(|error| format!("Métadonnées des icônes invalides : {error}"))
+}
+
+fn write_icon_metadata(
+    app: &AppHandle,
+    metadata: &HashMap<String, IconMetadata>,
+) -> Result<(), String> {
+    let metadata_path = get_icon_metadata_path(app)?;
+
+    if let Some(parent) = metadata_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Impossible de créer le dossier des métadonnées : {error}"))?;
+    }
+
+    let content = serde_json::to_string_pretty(metadata).map_err(|error| {
+        format!("Impossible de sérialiser les métadonnées des icônes : {error}")
+    })?;
+
+    fs::write(&metadata_path, content)
+        .map_err(|error| format!("Impossible d’enregistrer les métadonnées des icônes : {error}"))
+}
+
+fn icon_entry_from_path(
+    app: &AppHandle,
+    path: &Path,
+    metadata_by_id: &HashMap<String, IconMetadata>,
+) -> Result<IconEntry, String> {
+    let bytes = fs::read(path).map_err(|error| format!("Impossible de lire l'icône : {error}"))?;
 
     let encoded = general_purpose::STANDARD.encode(bytes);
     let data_url = format!("data:image/png;base64,{encoded}");
@@ -151,16 +202,25 @@ fn icon_entry_from_path(path: &Path) -> Result<IconEntry, String> {
         .to_string_lossy()
         .to_string();
 
-    let name = path
+    let fallback_name = path
         .file_stem()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
+    let metadata = metadata_by_id.get(&id).cloned().unwrap_or_default();
+
     Ok(IconEntry {
         id,
-        name,
+        name: metadata.name.unwrap_or(fallback_name),
         data_url,
+        categories: metadata.categories,
+        tags: metadata.tags,
+        source: metadata.source,
+        game_name: metadata.game_name,
+        style: metadata.style,
+        favorite: metadata.favorite,
+        notes: metadata.notes,
     })
 }
 
@@ -181,7 +241,8 @@ fn save_image_as_png(
         .save_with_format(&destination, image::ImageFormat::Png)
         .map_err(|error| format!("Impossible d'enregistrer l'image : {error}"))?;
 
-    icon_entry_from_path(&destination)
+    let metadata_by_id = read_icon_metadata(app)?;
+    icon_entry_from_path(app, &destination, &metadata_by_id)
 }
 
 pub fn save_image_bytes_as_icon(
@@ -227,7 +288,10 @@ fn download_direct_icon(
         .map_err(|error| format!("Téléchargement impossible : {error}"))?;
 
     if !response.status().is_success() {
-        return Err(format!("Téléchargement refusé : HTTP {}", response.status()));
+        return Err(format!(
+            "Téléchargement refusé : HTTP {}",
+            response.status()
+        ));
     }
 
     let bytes = response
@@ -242,6 +306,7 @@ fn download_direct_icon(
 #[tauri::command]
 pub fn get_library(app: AppHandle) -> Result<Vec<IconEntry>, String> {
     let library_path = get_library_path(&app)?;
+    let metadata_by_id = read_icon_metadata(&app)?;
     let mut icons = Vec::new();
 
     let entries = fs::read_dir(&library_path)
@@ -251,7 +316,7 @@ pub fn get_library(app: AppHandle) -> Result<Vec<IconEntry>, String> {
         let path = entry.path();
 
         if is_supported_icon_file(&path) {
-            if let Ok(icon) = icon_entry_from_path(&path) {
+            if let Ok(icon) = icon_entry_from_path(&app, &path, &metadata_by_id) {
                 icons.push(icon);
             }
         }
@@ -260,6 +325,38 @@ pub fn get_library(app: AppHandle) -> Result<Vec<IconEntry>, String> {
     icons.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     Ok(icons)
+}
+
+#[tauri::command]
+pub fn update_icon_metadata(
+    app: AppHandle,
+    icon_id: String,
+    metadata: IconMetadata,
+) -> Result<IconEntry, String> {
+    let path = path_from_icon_id(&app, &icon_id)?;
+
+    let mut metadata_by_id = read_icon_metadata(&app)?;
+    metadata_by_id.insert(icon_id.clone(), metadata);
+
+    write_icon_metadata(&app, &metadata_by_id)?;
+
+    icon_entry_from_path(&app, &path, &metadata_by_id)
+}
+
+#[tauri::command]
+pub fn get_icon_categories(app: AppHandle) -> Result<Vec<String>, String> {
+    let metadata_by_id = read_icon_metadata(&app)?;
+
+    let mut categories = metadata_by_id
+        .values()
+        .flat_map(|metadata| metadata.categories.clone())
+        .filter(|category| !category.trim().is_empty())
+        .collect::<Vec<_>>();
+
+    categories.sort_by_key(|category| category.to_lowercase());
+    categories.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+
+    Ok(categories)
 }
 
 #[tauri::command]
@@ -318,7 +415,10 @@ pub fn import_icon_from_data(
 #[tauri::command]
 pub fn download_icon_from_url(app: AppHandle, url: String) -> Result<IconEntry, String> {
     if url.contains("steamgriddb.com/collection/") {
-        return Err("Les collections SteamGridDB doivent être importées via le module SteamGridDB.".to_string());
+        return Err(
+            "Les collections SteamGridDB doivent être importées via le module SteamGridDB."
+                .to_string(),
+        );
     }
 
     let client = http_client()?;
