@@ -681,46 +681,58 @@ function renderIconCardMetadata({
                                     score = null,
                                     showScore = false,
                                 }) {
-    const visibleCategories = categories.filter(Boolean).slice(0, 3);
-    const visibleTags = tags.filter(Boolean).slice(0, 4);
+    const normalizedCategories = categories.filter(Boolean);
+    const normalizedTags = tags.filter(Boolean);
+
+    const visibleCategories = normalizedCategories.slice(0, 1);
+    const hiddenMetadataCount = Math.max(
+        0,
+        normalizedCategories.length - visibleCategories.length + normalizedTags.length
+    );
 
     return `
         <div class="icon-card-metadata">
             <div class="icon-card-pills">
-                <span class="icon-pill source-pill">${escapeHtml(sourceLabel)}</span>
+                <span class="icon-pill source-pill" title="${escapeHtml(sourceLabel)}">
+                    ${escapeHtml(sourceLabel)}
+                </span>
 
                 ${gameName ? `
-                    <span class="icon-pill">${escapeHtml(gameName)}</span>
+                    <span class="icon-pill" title="${escapeHtml(gameName)}">
+                        ${escapeHtml(gameName)}
+                    </span>
                 ` : ''}
 
                 ${style ? `
-                    <span class="icon-pill">${escapeHtml(style)}</span>
+                    <span class="icon-pill" title="${escapeHtml(style)}">
+                        ${escapeHtml(style)}
+                    </span>
                 ` : ''}
 
                 ${showScore && score !== null && score !== undefined ? `
-                    <span class="icon-pill">Score ${escapeHtml(score)}</span>
+                    <span class="icon-pill" title="Score ${escapeHtml(score)}">
+                        Score ${escapeHtml(score)}
+                    </span>
                 ` : ''}
 
                 ${visibleCategories.map(category => `
-                    <span class="icon-pill">${escapeHtml(category)}</span>
+                    <span class="icon-pill" title="${escapeHtml(category)}">
+                        ${escapeHtml(category)}
+                    </span>
                 `).join('')}
 
-                ${categories.length > visibleCategories.length ? `
-                    <span class="icon-pill muted">+${categories.length - visibleCategories.length}</span>
+                ${hiddenMetadataCount > 0 ? `
+                    <span
+                        class="icon-pill muted"
+                        title="${escapeHtml([
+        ...normalizedCategories.slice(visibleCategories.length),
+        ...normalizedTags.map(tag => `#${tag}`),
+    ].join(', '))}"
+                    >
+                        +${hiddenMetadataCount}
+                    </span>
                 ` : ''}
             </div>
-
-            ${visibleTags.length ? `
-                <div class="icon-card-tags" title="${escapeHtml(tags.join(', '))}">
-                    ${visibleTags.map(tag => `
-                        <span>#${escapeHtml(tag)}</span>
-                    `).join('')}
-
-                    ${tags.length > visibleTags.length ? `
-                        <span>+${tags.length - visibleTags.length}</span>
-                    ` : ''}
-                </div>
-            ` : ''}
 
             ${notes ? `
                 <p class="icon-card-note" title="${escapeHtml(notes)}">${escapeHtml(notes)}</p>
@@ -2180,6 +2192,7 @@ function registerWindowControls() {
 
 function resetLocalFiltersAndRender() {
     selectedIconIds.clear();
+    $$('.icon-card').forEach(resetIconCardMotion);
     renderLocalIcons();
     updateDeleteSelectionButton();
 }
@@ -2292,10 +2305,192 @@ function registerEventListeners() {
     });
 }
 
+function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+const ANIMATION_FPS = 45;
+
+function throttleAnimationFrame(callback, fps = ANIMATION_FPS) {
+    const minInterval = 1000 / fps;
+
+    let frameId = null;
+    let lastRun = 0;
+    let latestArgs = null;
+    let latestThis = null;
+
+    const run = timestamp => {
+        if (timestamp - lastRun < minInterval) {
+            frameId = requestAnimationFrame(run);
+            return;
+        }
+
+        frameId = null;
+        lastRun = timestamp;
+
+        callback.apply(latestThis, latestArgs);
+
+        latestArgs = null;
+        latestThis = null;
+    };
+
+    return function throttledAnimationFrameCallback(...args) {
+        latestArgs = args;
+        latestThis = this;
+
+        if (frameId !== null) {
+            return;
+        }
+
+        frameId = requestAnimationFrame(run);
+    };
+}
+
+function registerPointerMotion() {
+    if (prefersReducedMotion()) {
+        return;
+    }
+
+    let latestX = window.innerWidth / 2;
+    let latestY = window.innerHeight / 2;
+
+    const root = document.documentElement;
+
+    const applyPointerPosition = () => {
+        raf = null;
+
+        root.style.setProperty('--mouse-x', `${latestX}px`);
+        root.style.setProperty('--mouse-y', `${latestY}px`);
+    };
+
+    const schedulePointerUpdate = event => {
+        latestX = event.clientX;
+        latestY = event.clientY;
+
+        if (raf) {
+            return;
+        }
+
+        raf = requestAnimationFrame(applyPointerPosition);
+    };
+
+    window.addEventListener('pointermove', schedulePointerUpdate, { passive: true });
+
+    window.addEventListener('pointerleave', () => {
+        latestX = window.innerWidth / 2;
+        latestY = window.innerHeight / 2;
+
+        if (!raf) {
+            raf = requestAnimationFrame(applyPointerPosition);
+        }
+    }, { passive: true });
+
+    applyPointerPosition();
+}
+
+function resetIconCardMotion(card) {
+    if (!card) {
+        return;
+    }
+
+    card.style.setProperty('--card-rotate-x', '0deg');
+    card.style.setProperty('--card-rotate-y', '0deg');
+    card.style.setProperty('--icon-shift-x', '0px');
+    card.style.setProperty('--icon-shift-y', '0px');
+}
+
+function applyIconCardMotion(card, event) {
+    if (!card || prefersReducedMotion()) {
+        return;
+    }
+
+    const rect = card.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+        return;
+    }
+
+    const localX = clamp(event.clientX - rect.left, 0, rect.width);
+    const localY = clamp(event.clientY - rect.top, 0, rect.height);
+
+    const percentX = localX / rect.width;
+    const percentY = localY / rect.height;
+
+    const rotateY = clamp((percentX - 0.5) * 5.5, -3.5, 3.5);
+    const rotateX = clamp((0.5 - percentY) * 5.5, -3.5, 3.5);
+
+    const iconShiftX = clamp((percentX - 0.5) * 4, -2.5, 2.5);
+    const iconShiftY = clamp((percentY - 0.5) * 4, -2.5, 2.5);
+
+    card.style.setProperty('--card-rotate-x', `${rotateX.toFixed(2)}deg`);
+    card.style.setProperty('--card-rotate-y', `${rotateY.toFixed(2)}deg`);
+    card.style.setProperty('--icon-shift-x', `${iconShiftX.toFixed(2)}px`);
+    card.style.setProperty('--icon-shift-y', `${iconShiftY.toFixed(2)}px`);
+}
+
+function registerIconCardMotion() {
+    if (prefersReducedMotion()) {
+        return;
+    }
+
+    let latestCard = null;
+    let latestEvent = null;
+
+    const throttledApplyCardMotion = throttleAnimationFrame(() => {
+        if (latestCard && latestEvent) {
+            applyIconCardMotion(latestCard, latestEvent);
+        }
+    });
+
+    const scheduleCardMotion = event => {
+        const card = event.target.closest?.('.icon-card');
+
+        if (!card) {
+            return;
+        }
+
+        latestCard = card;
+        latestEvent = event;
+
+        throttledApplyCardMotion();
+    };
+
+    document.addEventListener('pointermove', scheduleCardMotion, { passive: true });
+
+    document.addEventListener('pointerout', event => {
+        const card = event.target.closest?.('.icon-card');
+
+        if (!card) {
+            return;
+        }
+
+        if (event.relatedTarget && card.contains(event.relatedTarget)) {
+            return;
+        }
+
+        resetIconCardMotion(card);
+    }, { passive: true });
+
+    document.addEventListener('pointercancel', event => {
+        const card = event.target.closest?.('.icon-card');
+        resetIconCardMotion(card);
+    }, { passive: true });
+
+    window.addEventListener('blur', () => {
+        $$('.icon-card').forEach(resetIconCardMotion);
+    });
+}
+
 function init() {
     createNotificationSystem();
     registerWindowControls();
     registerEventListeners();
+    // registerPointerMotion();
+    registerIconCardMotion();
 
     activatePage('library');
     activateTab('search');
